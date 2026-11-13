@@ -1,0 +1,7 @@
+FROM wordpress:6.7-php8.3-apache
+RUN docker-php-ext-install opcache
+RUN apt-get update && apt-get install -y less && rm -rf /var/lib/apt/lists/*
+RUN curl -sSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+# wp-cli
+RUN curl -sSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o /usr/local/bin/wp \
+    && chmod +x /usr/local/bin/wp
