@@ -17,7 +17,9 @@
     "wp-coding-standards/wpcs": "^3.1",
     "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
     "yoast/phpunit-polyfills": "^3.0",
-    "brain/monkey": "^2.6"
+    "brain/monkey": "^2.6",
+    "php-stubs/wordpress-stubs": "^7.1",
+    "php-stubs/woocommerce-stubs": "^11.3"
   },
   "autoload": {
     "psr-4": {

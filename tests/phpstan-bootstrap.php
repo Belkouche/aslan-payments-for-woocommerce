@@ -1,14 +1,5 @@
 <?php
-// Stubs so PHPStan understands WordPress + WooCommerce symbols without loading them.
+// Minimal PHPStan bootstrap. WordPress + WooCommerce symbols come from
+// vendor/php-stubs/wordpress-stubs and vendor/php-stubs/woocommerce-stubs
+// (see phpstan.neon.dist scanDirectories). Only define constants here.
 if (! defined('ABSPATH')) { define('ABSPATH', '/dev/null/'); }
-
-if (! function_exists('get_option')) {
-    /**
-     * @param mixed $default
-     * @return mixed
-     */
-    function get_option(string $option, $default = false)
-    {
-        return $default;
-    }
-}
