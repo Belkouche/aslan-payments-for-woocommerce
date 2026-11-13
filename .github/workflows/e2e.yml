@@ -1,0 +1,51 @@
+name: E2E
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      ASLAN_TEST_SECRET_KEY: ${{ secrets.ASLAN_TEST_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Install plugin dependencies
+        env:
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.GITHUB_TOKEN }}"}}'
+        run: composer install --no-dev --no-interaction --no-progress --prefer-dist
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e:up
+      - name: Configure plugin
+        run: |
+          sleep 10
+          docker compose -f docker/docker-compose.e2e.yml exec -T wp wp core install \
+            --url=http://localhost:8081 \
+            --title='E2E' \
+            --admin_user=admin \
+            --admin_password=admin \
+            --admin_email=admin@example.ma \
+            --allow-root
+          docker compose -f docker/docker-compose.e2e.yml exec -T wp wp plugin install woocommerce --activate --allow-root
+          docker compose -f docker/docker-compose.e2e.yml exec -T wp wp plugin activate aslan-payments-for-woocommerce --allow-root
+          docker compose -f docker/docker-compose.e2e.yml exec -T wp wp option update aslan_woo_mode test --allow-root
+          docker compose -f docker/docker-compose.e2e.yml exec -T wp wp option update aslan_woo_test_secret_key "$ASLAN_TEST_SECRET_KEY" --allow-root
+      - run: npm run e2e
+      - run: npm run e2e:down
+        if: always()

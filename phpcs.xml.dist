@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<ruleset name="Aslan Woo Plugin">
+  <description>Security/escaping sniffs from WPCS; PSR-12 for everything else.</description>
+  <file>src</file>
+  <file>aslan-payments-for-woocommerce.php</file>
+  <arg name="extensions" value="php"/>
+  <arg name="colors"/>
+  <arg value="sp"/>
+
+  <!-- PSR-12 is the base style for modern typed PHP. -->
+  <rule ref="PSR12"/>
+
+  <!-- Security/escaping sniffs that the WordPress ruleset provides. -->
+  <rule ref="WordPress.Security"/>
+  <rule ref="WordPress.WP.I18n"/>
+  <rule ref="WordPress.WP.AlternativeFunctions"/>
+  <rule ref="WordPress.PHP.NoSilencedErrors"/>
+  <rule ref="WordPress.DB.PreparedSQL"/>
+  <rule ref="WordPress.DB.PreparedSQLPlaceholders"/>
+  <rule ref="WordPress.Security.EscapeOutput"/>
+  <rule ref="WordPress.Security.NonceVerification"/>
+  <rule ref="WordPress.Security.ValidatedSanitizedInput"/>
+  <rule ref="Universal.Operators.StrictComparisons"/>
+  <rule ref="WordPress.PHP.StrictInArray"/>
+
+  <config name="minimum_supported_wp_version" value="6.4"/>
+  <config name="testVersion" value="8.2-"/>
+</ruleset>
