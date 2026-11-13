@@ -8,4 +8,7 @@ require_once __DIR__ . '/../vendor/autoload.php';
 // suite sets in its CI matrix (ASLAN_WOO_SUITE=integration).
 if (getenv('ASLAN_WOO_SUITE') === 'integration') {
     require __DIR__ . '/bootstrap-wp.php';
+} else {
+    // Unit suite: WooCommerce is not loaded, provide minimal stand-ins to mock.
+    require_once __DIR__ . '/stubs/WC_Order.php';
 }
