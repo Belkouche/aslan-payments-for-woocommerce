@@ -9,6 +9,7 @@ use Aslan\Payment\AslanException;
 use Aslan\Payment\Dto\CheckoutSession;
 use Aslan\Payment\Dto\Refund;
 use Aslan\Payment\Dto\WebhookConfig;
+use Aslan\Payment\HttpClient\HttpClientInterface;
 use Closure;
 
 /**
@@ -23,10 +24,31 @@ final class AslanHttpClient
 {
     private ?Aslan $sdk = null;
 
+    /**
+     * Build an SDK-factory closure guaranteed to disable the SDK's own retry.
+     * AslanHttpClient owns connection retries; the SDK's built-in retry would
+     * compound ours (3 * 3 = 9 attempts on a NETWORK_ERROR, several seconds wasted).
+     *
+     * Use this instead of hand-rolling `new Aslan($key)` in Plugin::register().
+     */
+    public static function sdkFactory(string $secretKey, ?HttpClientInterface $httpClient = null): Closure
+    {
+        return static fn (): Aslan => new Aslan(
+            $secretKey,
+            maxRetries: 0,
+            httpClient: $httpClient,
+        );
+    }
+
     /** @var array<int, int> milliseconds to sleep between attempts */
     private array $backoff = [300, 900];
 
-    /** @param array<int, int> $backoff */
+    /**
+     * @internal Test-only seam. Production callers must not touch this —
+     * backoff is set from the default schedule for reliability.
+     * @see tests/Unit/Client/AslanHttpClientTest.php
+     * @param array<int, int> $backoff
+     */
     public function setBackoffSchedule(array $backoff): void
     {
         $this->backoff = $backoff;
@@ -47,7 +69,7 @@ final class AslanHttpClient
             try {
                 return $op();
             } catch (AslanException $e) {
-                $isConnectionFailure = $e->errorCode === 'NETWORK_ERROR' || $e->httpStatus === 0;
+                $isConnectionFailure = $e->errorCode === 'NETWORK_ERROR';
                 $attempts++;
                 if (! $isConnectionFailure || $attempts >= $maxAttempts) {
                     throw $this->map($e); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
@@ -140,7 +162,10 @@ final class AslanHttpClient
         if ($status === 401 || $status === 403) {
             return new AslanAuthException($e->getMessage(), $code, $reqId, $e);
         }
-        if ($status >= 500 || $status === 0) {
+        // Only true network failures are transient — status 0 alone is not enough,
+        // because the SDK also returns status 0 for webhook-signature and
+        // unsupported-operation errors which are not retryable and not transient.
+        if ($status >= 500 || $code === 'NETWORK_ERROR') {
             return new AslanTransientException($e->getMessage(), $code, $reqId, $e);
         }
         return new AslanRequestException($e->getMessage(), $code, $reqId, $e);

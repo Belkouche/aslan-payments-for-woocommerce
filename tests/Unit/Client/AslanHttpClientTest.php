@@ -47,7 +47,7 @@ final class AslanHttpClientTest extends TestCase
     public function test_401_response_becomes_auth_exception(): void
     {
         $fakeHttp = $this->createMock(HttpClientInterface::class);
-        $fakeHttp->method('request')->willThrowException(AslanException::authenticationError('unauthorized', 401));
+        $fakeHttp->expects(self::once())->method('request')->willThrowException(AslanException::authenticationError('unauthorized', 401));
 
         $this->expectException(AslanAuthException::class);
         $this->clientFor($fakeHttp)->createCheckoutSession(['amount' => 1]);
@@ -56,7 +56,7 @@ final class AslanHttpClientTest extends TestCase
     public function test_4xx_response_becomes_request_exception(): void
     {
         $fakeHttp = $this->createMock(HttpClientInterface::class);
-        $fakeHttp->method('request')
+        $fakeHttp->expects(self::once())->method('request')
             ->willThrowException(AslanException::validationError('invalid_amount', [], 400, 'req_01'));
 
         try {
@@ -72,7 +72,7 @@ final class AslanHttpClientTest extends TestCase
     public function test_5xx_response_becomes_transient_exception(): void
     {
         $fakeHttp = $this->createMock(HttpClientInterface::class);
-        $fakeHttp->method('request')->willThrowException(AslanException::serverError('upstream_down', 503));
+        $fakeHttp->expects(self::once())->method('request')->willThrowException(AslanException::serverError('upstream_down', 503));
 
         $this->expectException(AslanTransientException::class);
         $this->clientFor($fakeHttp)->createCheckoutSession(['amount' => 1]);
