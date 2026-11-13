@@ -44,7 +44,8 @@ final class TroubleshootingActions
             if ($result->signingSecret !== null) {
                 update_option(
                     $mode === Config::MODE_LIVE ? Config::OPT_LIVE_WEBHOOK_SECRET : Config::OPT_TEST_WEBHOOK_SECRET,
-                    $result->signingSecret
+                    $result->signingSecret,
+                    false
                 );
             }
             $this->flash('ok', __('Webhook re-registered.', 'aslan-payments-for-woocommerce'));

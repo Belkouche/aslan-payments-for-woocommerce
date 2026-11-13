@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aslan\Woo\WooCommerce;
 
+use Aslan\Woo\Admin\SettingsGuard;
 use Aslan\Woo\Client\AslanAuthException;
 use Aslan\Woo\Client\AslanTransientException;
 use Aslan\Woo\Client\AslanWooException;
@@ -116,6 +117,60 @@ final class Gateway extends WC_Payment_Gateway
     }
 
     /**
+     * Secret keys are never echoed into the settings form: the password inputs show a
+     * fixed placeholder (WooCommerce would otherwise print the stored value).
+     *
+     * @param string $key
+     * @param mixed  $empty_value
+     * @return mixed
+     */
+    public function get_option($key, $empty_value = null)
+    {
+        $value = parent::get_option($key, $empty_value);
+        if (($key === 'test_secret_key' || $key === 'live_secret_key') && is_string($value)) {
+            return SettingsGuard::mask($value);
+        }
+        return $value;
+    }
+
+    /** @param string $key */
+    public function validate_test_secret_key_field($key, mixed $value): string
+    {
+        return $this->resolveSecretKey($key, $value);
+    }
+
+    /** @param string $key */
+    public function validate_live_secret_key_field($key, mixed $value): string
+    {
+        return $this->resolveSecretKey($key, $value);
+    }
+
+    /** @param string $key */
+    public function validate_webhook_url_override_field($key, mixed $value): string
+    {
+        $url = SettingsGuard::webhookOverride(is_string($value) ? wp_unslash($value) : '');
+        if ($url === null) {
+            $this->add_error(__(
+                'Webhook URL override must be a valid https:// URL. The previous value was kept.',
+                'aslan-payments-for-woocommerce'
+            ));
+            return $this->rawSetting($key);
+        }
+        return $url;
+    }
+
+    private function resolveSecretKey(string $key, mixed $value): string
+    {
+        return SettingsGuard::resolveKey(is_string($value) ? wp_unslash($value) : '', $this->rawSetting($key));
+    }
+
+    private function rawSetting(string $key): string
+    {
+        $stored = $this->settings[$key] ?? '';
+        return is_string($stored) ? $stored : '';
+    }
+
+    /**
      * Mirrors the settings blob WooCommerce just saved into our canonical
      * aslan_woo_* options, then registers each changed key with Aslan.
      */
@@ -133,8 +188,8 @@ final class Gateway extends WC_Payment_Gateway
         ];
 
         update_option(Config::OPT_MODE, $this->setting($settings, 'mode', 'test'));
-        update_option(Config::OPT_TEST_KEY, $this->setting($settings, 'test_secret_key'));
-        update_option(Config::OPT_LIVE_KEY, $this->setting($settings, 'live_secret_key'));
+        update_option(Config::OPT_TEST_KEY, $this->setting($settings, 'test_secret_key'), false);
+        update_option(Config::OPT_LIVE_KEY, $this->setting($settings, 'live_secret_key'), false);
         update_option(Config::OPT_TITLE, $this->setting($settings, 'title'));
         update_option(Config::OPT_SHOW_TEST_BANNER, $this->setting($settings, 'show_test_banner', 'yes') === 'yes');
         update_option(Config::OPT_WEBHOOK_URL_OVERRIDE, $this->setting($settings, 'webhook_url_override'));
@@ -163,7 +218,7 @@ final class Gateway extends WC_Payment_Gateway
                 $result = $this->keyLifecycle->register($mode, $key, $siteWebhookUrl);
                 // Null on a non-rotating re-upsert: keep the stored secret.
                 if ($result->signingSecret !== null) {
-                    update_option($secretOptions[$mode], $result->signingSecret);
+                    update_option($secretOptions[$mode], $result->signingSecret, false);
                 }
                 $events[$mode] = ['ok' => true, 'mode' => $mode, 'apiKeyId' => $result->apiKeyId];
             } catch (\Throwable $e) {
