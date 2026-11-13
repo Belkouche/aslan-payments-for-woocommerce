@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Aslan\Woo;
 
+use Aslan\Woo\Config;
+
 final class Plugin
 {
     private static ?self $instance = null;
@@ -28,7 +30,11 @@ final class Plugin
 
     private function register(): void
     {
-        // Subsequent phases wire services here.
-        // Phase 1 leaves this empty on purpose — just prove the autoload path works.
+        $config = new Config();
+
+        add_filter('woocommerce_payment_gateways', static function (array $gateways) use ($config): array {
+            $gateways[] = new WooCommerce\Gateway($config);
+            return $gateways;
+        });
     }
 }
