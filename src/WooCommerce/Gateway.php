@@ -116,6 +116,9 @@ final class Gateway extends WC_Payment_Gateway
         ];
     }
 
+    public const SETTINGS_NONCE_ACTION = 'aslan_woo_save_settings';
+    public const SETTINGS_NONCE_FIELD  = 'aslan_settings_nonce';
+
     /**
      * Secret keys are never echoed into the settings form: the password inputs show a
      * fixed placeholder (WooCommerce would otherwise print the stored value).
@@ -131,6 +134,38 @@ final class Gateway extends WC_Payment_Gateway
             return SettingsGuard::mask($value);
         }
         return $value;
+    }
+
+    /**
+     * Renders WC's standard settings table plus a scoped nonce field.
+     * Without this, the Aslan tab would share the `woocommerce-settings` nonce
+     * with every other WC settings page — a cross-tab CSRF window.
+     */
+    public function admin_options(): void
+    {
+        parent::admin_options();
+        wp_nonce_field(self::SETTINGS_NONCE_ACTION, self::SETTINGS_NONCE_FIELD);
+    }
+
+    /**
+     * Verify the scoped nonce before letting WC save. On failure the save is
+     * cancelled, an admin error is surfaced, and the stored settings are left
+     * untouched (persist_bridged_options never runs because the parent returns
+     * before firing woocommerce_update_options_payment_gateways_aslan).
+     */
+    public function process_admin_options(): bool
+    {
+        $nonce = isset($_POST[self::SETTINGS_NONCE_FIELD])
+            ? sanitize_text_field(wp_unslash((string) $_POST[self::SETTINGS_NONCE_FIELD]))
+            : '';
+        if ($nonce === '' || wp_verify_nonce($nonce, self::SETTINGS_NONCE_ACTION) === false) {
+            \WC_Admin_Settings::add_error(__(
+                'Aslan settings not saved: security check failed. Reload this page and try again.',
+                'aslan-payments-for-woocommerce'
+            ));
+            return false;
+        }
+        return parent::process_admin_options();
     }
 
     /** @param string $key */
