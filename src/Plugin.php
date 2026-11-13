@@ -39,6 +39,8 @@ final class Plugin
         $httpClient      = new AslanHttpClient(AslanHttpClient::sdkFactory($config->activeSecretKey()));
         $checkoutService = new CheckoutService($httpClient);
 
+        (new Rest\WebhookRoute($config, new Service\WebhookService()))->register();
+
         add_filter(
             'woocommerce_payment_gateways',
             static function (array $gateways) use ($config, $checkoutService): array {
