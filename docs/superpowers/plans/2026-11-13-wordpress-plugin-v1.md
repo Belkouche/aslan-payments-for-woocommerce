@@ -211,7 +211,10 @@ build/
 dist/
 *.log
 .DS_Store
+.superpowers/
 ```
+
+`.superpowers/` is the superpowers-skill scratch directory (brainstorm visual-companion state, plan intermediates). It should never ship to wordpress.org.
 
 - [ ] **Step 3: Run `composer install`**
 
