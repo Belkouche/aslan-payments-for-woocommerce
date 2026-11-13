@@ -50,4 +50,62 @@ final class WebhookService
         }
         return $event;
     }
+
+    /**
+     * Dispatch a verified event to the right order mutation.
+     *
+     * @param array<string, mixed>      $event       Decoded event body.
+     * @param callable(int): ?\WC_Order $orderLoader Called with the wc_order_id from metadata.
+     */
+    public function handle(array $event, callable $orderLoader): void
+    {
+        $eventType = (string) ($event['event'] ?? '');
+        $data      = $event['data'] ?? [];
+        if (! is_array($data)) {
+            return;
+        }
+        $wcOrderId = isset($data['metadata']['wc_order_id']) ? (int) $data['metadata']['wc_order_id'] : 0;
+        if ($wcOrderId <= 0) {
+            return;
+        }
+        $order = $orderLoader($wcOrderId);
+        if ($order === null) {
+            return;
+        }
+
+        switch ($eventType) {
+            case 'payment.succeeded':
+                $paymentId = (string) ($data['id'] ?? '');
+                $order->update_meta_data('_aslan_payment_id', $paymentId);
+                if (isset($data['cardLast4'])) {
+                    $order->update_meta_data('_aslan_card_last4', (string) $data['cardLast4']);
+                }
+                $order->save();
+                $order->payment_complete($paymentId);
+                break;
+
+            case 'payment.failed':
+                $reason = (string) ($data['failureReason'] ?? 'unknown');
+                $order->update_status(
+                    'failed',
+                    sprintf('Aslan reported payment failed: %s', $reason)
+                );
+                break;
+
+            case 'payment.pending_cash':
+                $order->update_status(
+                    'aslan-awaiting-cash',
+                    'Aslan reported cash payment pending at the agent network'
+                );
+                break;
+
+            case 'refund.succeeded':
+                // Phase 9 implements.
+                break;
+
+            default:
+                // Ignore unknown events: Aslan may add new types before we support them.
+                break;
+        }
+    }
 }

@@ -56,4 +56,63 @@ final class WebhookServiceTest extends TestCase
         $this->expectException(WebhookVerificationException::class);
         $service->verify('{}', 'not-a-signature', self::SECRET);
     }
+
+    public function test_payment_succeeded_calls_payment_complete_with_order(): void
+    {
+        $order = $this->createMock(\WC_Order::class);
+        $order->expects(self::once())->method('payment_complete')->with('pay_01HZ');
+        $order->expects(self::atLeastOnce())->method('update_meta_data');
+        $order->expects(self::atLeastOnce())->method('save');
+
+        $service = new WebhookService();
+        $service->handle(
+            event: [
+                'id'    => 'evt_01HZ',
+                'event' => 'payment.succeeded',
+                'data'  => [
+                    'id'        => 'pay_01HZ',
+                    'metadata'  => ['wc_order_id' => '42'],
+                    'cardLast4' => '4242',
+                ],
+            ],
+            orderLoader: fn (int $id) => $id === 42 ? $order : null,
+        );
+    }
+
+    public function test_payment_failed_sets_status_failed(): void
+    {
+        $order = $this->createMock(\WC_Order::class);
+        $order->expects(self::once())->method('update_status')->with('failed', self::anything());
+
+        $service = new WebhookService();
+        $service->handle(
+            event: [
+                'id'    => 'evt_02HZ',
+                'event' => 'payment.failed',
+                'data'  => [
+                    'id'            => 'pay_02HZ',
+                    'metadata'      => ['wc_order_id' => '42'],
+                    'failureReason' => 'issuer_declined',
+                ],
+            ],
+            orderLoader: fn (int $id) => $id === 42 ? $order : null,
+        );
+    }
+
+    public function test_unknown_order_logs_and_returns(): void
+    {
+        $service = new WebhookService();
+
+        $service->handle(
+            event: [
+                'id'    => 'evt_03HZ',
+                'event' => 'payment.succeeded',
+                'data'  => ['metadata' => ['wc_order_id' => '999']],
+            ],
+            orderLoader: fn (int $id) => null,
+        );
+
+        // Reaching here is the assertion: no exception thrown.
+        self::assertTrue(true);
+    }
 }

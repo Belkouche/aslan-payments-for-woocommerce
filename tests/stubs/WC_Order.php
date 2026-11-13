@@ -51,4 +51,14 @@ class WC_Order
     {
         return 0;
     }
+
+    public function payment_complete($transaction_id = '')
+    {
+        return true;
+    }
+
+    public function update_status($new_status, $note = '', $manual = false)
+    {
+        return true;
+    }
 }
