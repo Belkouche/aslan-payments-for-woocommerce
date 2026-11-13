@@ -20,7 +20,7 @@ final class CheckoutService
     public function createSessionForOrder(WC_Order $order): CheckoutSessionResult
     {
         $orderId  = (int) $order->get_id();
-        $centimes = AmountValidator::madToCentimes((float) $order->get_total());
+        $centimes = AmountValidator::madToCentimes((string) $order->get_total());
 
         $attempt = (int) $order->get_meta(self::META_ATTEMPT_COUNT) + 1;
 
@@ -43,6 +43,8 @@ final class CheckoutService
 
         $order->update_meta_data(self::META_SESSION_ID, $session->id);
         $order->update_meta_data(self::META_ATTEMPT_COUNT, (string) $attempt);
+        // TODO: if save() fails after Aslan session created, the local record is lost.
+        // Webhook will settle it eventually via the session metadata.
         $order->save();
 
         return new CheckoutSessionResult(sessionId: $session->id, redirectUrl: $session->url);

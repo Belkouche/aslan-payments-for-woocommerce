@@ -31,12 +31,24 @@ final class AmountValidatorTest extends TestCase
 
     public function test_mad_to_centimes_converts_whole_amount(): void
     {
-        self::assertSame(29900, AmountValidator::madToCentimes(299.0));
+        self::assertSame(29900, AmountValidator::madToCentimes('299.00'));
     }
 
     public function test_mad_to_centimes_rejects_fractional_mad(): void
     {
         $this->expectException(NonWholeMadException::class);
-        AmountValidator::madToCentimes(299.50);
+        AmountValidator::madToCentimes('299.50');
+    }
+
+    public function test_mad_to_centimes_rejects_sub_centime_fraction(): void
+    {
+        $this->expectException(NonWholeMadException::class);
+        AmountValidator::madToCentimes('299.999999999');
+    }
+
+    public function test_mad_to_centimes_rejects_non_numeric(): void
+    {
+        $this->expectException(NonWholeMadException::class);
+        AmountValidator::madToCentimes('three hundred');
     }
 }

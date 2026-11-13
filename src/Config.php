@@ -33,13 +33,13 @@ final class Config
     public function activeSecretKey(): string
     {
         $opt = $this->mode() === self::MODE_LIVE ? self::OPT_LIVE_KEY : self::OPT_TEST_KEY;
-        return $this->stringOption($opt);
+        return trim($this->stringOption($opt));
     }
 
     public function activeWebhookSecret(): string
     {
         $opt = $this->mode() === self::MODE_LIVE ? self::OPT_LIVE_WEBHOOK_SECRET : self::OPT_TEST_WEBHOOK_SECRET;
-        return $this->stringOption($opt);
+        return trim($this->stringOption($opt));
     }
 
     public function isConfigured(): bool

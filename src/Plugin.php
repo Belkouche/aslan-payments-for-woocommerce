@@ -30,6 +30,9 @@ final class Plugin
         return $instance;
     }
 
+    // TODO(Phase 12): if admin saves settings mid-request, the SDK factory captures the pre-save key.
+    // Reload of /wp-admin or next request picks up the new key. Acceptable because WP admin saves
+    // always follow a full page reload.
     private function register(): void
     {
         $config          = new Config();

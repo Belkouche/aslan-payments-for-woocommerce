@@ -20,13 +20,32 @@ final class AmountValidator
      * Convert a MAD amount (e.g. 299.00) into centimes (29900).
      * Fractional MAD is rejected: the NAPS PSP does not accept it.
      */
-    public static function madToCentimes(float $mad): int
+    public static function madToCentimes(string $mad): int
     {
-        $centimes = (int) round($mad * 100);
-        if (abs($mad * 100 - $centimes) > 0.0001) {
-            throw new NonWholeMadException(sprintf('Amount must be whole MAD. Got: %.4f MAD', $mad));
+        $mad = trim($mad);
+        if ($mad === '' || !preg_match('/^\d+(\.\d+)?$/', $mad)) {
+            throw new NonWholeMadException(
+                sprintf('Amount must be a decimal string like "299.00". Got: "%s"', $mad)
+            );
         }
-        self::assertWholeMadCentimes($centimes);
+        // Split on the decimal point. No point means zero fractional part.
+        $parts = explode('.', $mad);
+        $whole = $parts[0];
+        $fraction = $parts[1] ?? '';
+
+        // Reject any non-zero fractional digit — fractional MAD is not accepted.
+        if (ltrim($fraction, '0') !== '') {
+            throw new NonWholeMadException(
+                sprintf('Amount must be whole MAD. Got: %s MAD', $mad)
+            );
+        }
+
+        $centimes = (int) $whole * 100;
+        if ($centimes <= 0) {
+            throw new NonWholeMadException(
+                sprintf('Amount must be positive. Got: %s MAD', $mad)
+            );
+        }
         return $centimes;
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aslan\Woo\WooCommerce;
 
+use Aslan\Woo\Client\AslanAuthException;
 use Aslan\Woo\Client\AslanTransientException;
 use Aslan\Woo\Client\AslanWooException;
 use Aslan\Woo\Config;
@@ -57,6 +58,9 @@ final class Gateway extends WC_Payment_Gateway
 
     public function is_available(): bool
     {
+        if (function_exists('get_woocommerce_currency') && get_woocommerce_currency() !== 'MAD') {
+            return false;
+        }
         return $this->config->isConfigured();
     }
 
@@ -72,6 +76,18 @@ final class Gateway extends WC_Payment_Gateway
                 'result'   => 'failure',
                 'messages' => __('Order not found.', 'aslan-payments-for-woocommerce'),
             ];
+        }
+
+        if ($order->get_currency() !== 'MAD') {
+            $order->add_order_note(sprintf(
+                'Aslan refused: order currency is %s, only MAD is supported',
+                $order->get_currency()
+            ));
+            wc_add_notice(
+                __('Aslan only accepts orders in MAD. Please contact the merchant.', 'aslan-payments-for-woocommerce'),
+                'error'
+            );
+            return ['result' => 'failure'];
         }
 
         try {
@@ -97,6 +113,18 @@ final class Gateway extends WC_Payment_Gateway
                 'error'
             );
             return ['result' => 'failure'];
+        } catch (AslanAuthException $e) {
+            $order->add_order_note(sprintf('Aslan auth error (merchant key invalid): %s', $e->getMessage()));
+            // TODO(Phase 12): raise persistent admin notice for configuration errors
+            wc_add_notice(
+                __(
+                    'This payment method is temporarily unavailable. Please choose another method.',
+                    'aslan-payments-for-woocommerce'
+                ),
+                'error'
+            );
+            return ['result' => 'failure'];
+        // TODO(Phase 12): raise persistent admin notice
         } catch (AslanWooException $e) {
             $order->add_order_note(sprintf('Aslan error: %s', $e->getMessage()));
             wc_add_notice(
