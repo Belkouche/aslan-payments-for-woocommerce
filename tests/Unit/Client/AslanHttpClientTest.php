@@ -5,8 +5,12 @@ declare(strict_types=1);
 namespace Aslan\Woo\Tests\Unit\Client;
 
 use Aslan\Payment\Aslan;
+use Aslan\Payment\AslanException;
 use Aslan\Payment\HttpClient\HttpClientInterface;
+use Aslan\Woo\Client\AslanAuthException;
 use Aslan\Woo\Client\AslanHttpClient;
+use Aslan\Woo\Client\AslanRequestException;
+use Aslan\Woo\Client\AslanTransientException;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -38,6 +42,40 @@ final class AslanHttpClientTest extends TestCase
         ], 'order_42_1');
 
         self::assertSame('cs_live_01HZABC', $result->id);
+    }
+
+    public function test_401_response_becomes_auth_exception(): void
+    {
+        $fakeHttp = $this->createMock(HttpClientInterface::class);
+        $fakeHttp->method('request')->willThrowException(AslanException::authenticationError('unauthorized', 401));
+
+        $this->expectException(AslanAuthException::class);
+        $this->clientFor($fakeHttp)->createCheckoutSession(['amount' => 1]);
+    }
+
+    public function test_4xx_response_becomes_request_exception(): void
+    {
+        $fakeHttp = $this->createMock(HttpClientInterface::class);
+        $fakeHttp->method('request')
+            ->willThrowException(AslanException::validationError('invalid_amount', [], 400, 'req_01'));
+
+        try {
+            $this->clientFor($fakeHttp)->createCheckoutSession(['amount' => 1]);
+            self::fail('Expected AslanRequestException');
+        } catch (AslanRequestException $e) {
+            self::assertNotInstanceOf(AslanAuthException::class, $e);
+            self::assertSame('VALIDATION_ERROR', $e->aslanCode);
+            self::assertSame('req_01', $e->aslanRequestId);
+        }
+    }
+
+    public function test_5xx_response_becomes_transient_exception(): void
+    {
+        $fakeHttp = $this->createMock(HttpClientInterface::class);
+        $fakeHttp->method('request')->willThrowException(AslanException::serverError('upstream_down', 503));
+
+        $this->expectException(AslanTransientException::class);
+        $this->clientFor($fakeHttp)->createCheckoutSession(['amount' => 1]);
     }
 
     private function clientFor(MockObject&HttpClientInterface $fakeHttp): AslanHttpClient
