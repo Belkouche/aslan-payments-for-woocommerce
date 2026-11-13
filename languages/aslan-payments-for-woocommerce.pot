@@ -1,0 +1,259 @@
+# Copyright (C) 2026 Aslan
+# This file is distributed under the GPL-2.0-or-later.
+msgid ""
+msgstr ""
+"Project-Id-Version: Aslan Payments for WooCommerce 0.1.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/aslan-payments-for-woocommerce\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-11-13T09:11:13+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: aslan-payments-for-woocommerce\n"
+
+#. Plugin Name of the plugin
+#: aslan-payments-for-woocommerce.php
+msgid "Aslan Payments for WooCommerce"
+msgstr ""
+
+#. Plugin URI of the plugin
+#: aslan-payments-for-woocommerce.php
+msgid "https://aslanpay.ma/wordpress"
+msgstr ""
+
+#. Description of the plugin
+#: aslan-payments-for-woocommerce.php
+msgid "Accept card, mobile wallet, and cash-agent payments through Aslan on WooCommerce. Plus a lightweight [aslan_pay] shortcode for standalone payments."
+msgstr ""
+
+#. Author of the plugin
+#: aslan-payments-for-woocommerce.php
+#: src/WooCommerce/Gateway.php:36
+msgid "Aslan"
+msgstr ""
+
+#. Author URI of the plugin
+#: aslan-payments-for-woocommerce.php
+msgid "https://aslanpay.ma"
+msgstr ""
+
+#: aslan-payments-for-woocommerce.php:36
+msgid "Aslan Payments: vendor/ directory missing. Run `composer install` or install the plugin from the official ZIP."
+msgstr ""
+
+#: src/Admin/PriceScanner.php:44
+msgid "Aslan cannot charge fractional-MAD amounts. The following products have fractional prices:"
+msgstr ""
+
+#. translators: %d: number of additional products not listed.
+#: src/Admin/PriceScanner.php:63
+#, php-format
+msgid "… and %d more"
+msgstr ""
+
+#: src/Admin/SetupStatusCard.php:36
+msgid "Setup status"
+msgstr ""
+
+#. translators: %s: Aslan API key id
+#: src/Admin/SetupStatusCard.php:50
+#, php-format
+msgid "verified — API key %s"
+msgstr ""
+
+#: src/Admin/SetupStatusCard.php:51
+msgid "verified"
+msgstr ""
+
+#. translators: %s: key mode (test or live)
+#: src/Admin/SetupStatusCard.php:60
+#, php-format
+msgid "%s key"
+msgstr ""
+
+#: src/Admin/SetupStatusCard.php:70
+msgid "Webhook endpoint"
+msgstr ""
+
+#: src/Admin/SetupStatusCard.php:72
+msgid "(override)"
+msgstr ""
+
+#: src/Admin/SetupStatusCard.php:79
+msgid "Webhook signing secret stored"
+msgstr ""
+
+#: src/Admin/SetupStatusCard.php:81
+msgid "(never shown)"
+msgstr ""
+
+#: src/Admin/SetupStatusCard.php:91
+msgid "Re-register webhook"
+msgstr ""
+
+#: src/Admin/SetupStatusCard.php:92
+msgid "Send test webhook"
+msgstr ""
+
+#: src/Admin/SetupStatusCard.php:93
+msgid "Download diagnostic log"
+msgstr ""
+
+#: src/Admin/TroubleshootingActions.php:37
+msgid "No secret key saved for the active mode."
+msgstr ""
+
+#: src/Admin/TroubleshootingActions.php:50
+msgid "Webhook re-registered."
+msgstr ""
+
+#: src/Admin/TroubleshootingActions.php:61
+msgid "Open your Aslan dashboard → Webhooks → Send test event."
+msgstr ""
+
+#: src/Admin/TroubleshootingActions.php:111
+msgid "You are not allowed to do this."
+msgstr ""
+
+#: src/Shortcode/PayShortcode.php:31
+msgid "[aslan_pay: amount must be a positive multiple of 100 centimes]"
+msgstr ""
+
+#. translators: %d: amount in MAD
+#: src/Shortcode/PayShortcode.php:42
+#, php-format
+msgid "Pay %d MAD"
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:37
+msgid "Accept card, mobile wallet, and cash-agent payments through Aslan."
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:51
+#: src/WooCommerce/Gateway.php:93
+msgid "Pay by card, wallet, or cash agent"
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:64
+msgid "Mode"
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:68
+msgid "Test — no real money moves"
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:69
+msgid "Live — real payments"
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:73
+msgid "Test secret key"
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:75
+msgid "Starts with sk_test_. From your Aslan dashboard → Developers → API keys."
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:82
+msgid "Live secret key"
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:84
+msgid "Starts with sk_live_. From your Aslan dashboard → Developers → API keys."
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:91
+msgid "Title shown to customers"
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:96
+msgid "Checkout display"
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:97
+msgid "Show \"Test Mode\" banner on checkout when in test mode"
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:105
+msgid "Webhook URL override"
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:108
+msgid "Advanced. Leave empty unless your WordPress public URL differs from where Aslan should POST (e.g. behind a tunnel). If filled, this exact URL is registered with Aslan."
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:222
+msgid "Order not found."
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:232
+msgid "Aslan only accepts orders in MAD. Please contact the merchant."
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:242
+msgid "Aslan accepts whole MAD amounts only. Please remove decimals from product prices or taxes."
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:254
+msgid "Payment service is temporarily unavailable. Please try again in a moment."
+msgstr ""
+
+#. translators: %d: WooCommerce order ID
+#: src/WooCommerce/Gateway.php:269
+#, php-format
+msgid "Aslan rejected a payment attempt — order #%d. Your API key appears to be invalid or in the wrong mode. Check WooCommerce → Settings → Payments → Aslan."
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:276
+msgid "This payment method is temporarily unavailable. Please choose another method."
+msgstr ""
+
+#. translators: 1: WooCommerce order ID, 2: Aslan error code
+#: src/WooCommerce/Gateway.php:291
+#, php-format
+msgid "Aslan rejected a payment attempt — order #%1$d. Reason: %2$s. Check your plugin settings."
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:302
+msgid "Payment could not be started. Please try again or choose another method."
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:311
+msgid "Awaiting Aslan payment"
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:331
+msgid "Refund failed: invalid order or amount."
+msgstr ""
+
+#: src/WooCommerce/Gateway.php:340
+msgid "Refund amounts must be whole MAD."
+msgstr ""
+
+#. translators: %s: number of orders
+#: src/WooCommerce/OrderStatus.php:21
+#, php-format
+msgid "Awaiting cash payment <span class=\"count\">(%s)</span>"
+msgid_plural "Awaiting cash payment <span class=\"count\">(%s)</span>"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/WooCommerce/OrderStatus.php:37
+msgctxt "Order status"
+msgid "Awaiting cash payment"
+msgstr ""
+
+#: src/WooCommerce/ThankYouPage.php:27
+msgid "Your order is reserved. Pay at any cash agent to confirm it."
+msgstr ""
+
+#: src/WooCommerce/ThankYouPage.php:43
+msgid "Confirming your payment…"
+msgstr ""
+
+#: src/WooCommerce/ThankYouPage.php:58
+msgid "Still processing. We will email you a confirmation shortly."
+msgstr ""
