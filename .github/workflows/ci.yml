@@ -17,7 +17,12 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           coverage: none
-      - run: composer install --no-interaction --prefer-dist
+      - name: Install dependencies
+        env:
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.GITHUB_TOKEN }}"}}'
+        run: composer install --no-interaction --no-progress --no-ansi --prefer-dist
       - run: composer test -- --testsuite unit
       - run: composer analyse
+      - name: Verify phpcs standards are registered
+        run: vendor/bin/phpcs -i | tee /dev/stderr | grep -q WordPress
       - run: composer lint

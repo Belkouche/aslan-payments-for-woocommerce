@@ -21,8 +21,9 @@ final class Plugin
         if (self::$instance === null) {
             self::boot();
         }
-        assert(self::$instance !== null);
-        return self::$instance;
+        /** @phpstan-var self $instance */
+        $instance = self::$instance;
+        return $instance;
     }
 
     private function register(): void
