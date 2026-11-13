@@ -19,7 +19,8 @@
     "yoast/phpunit-polyfills": "^3.0",
     "brain/monkey": "^2.6",
     "php-stubs/wordpress-stubs": "^7.1",
-    "php-stubs/woocommerce-stubs": "^11.3"
+    "php-stubs/woocommerce-stubs": "^11.3",
+    "wp-phpunit/wp-phpunit": "^7.1"
   },
   "autoload": {
     "psr-4": {
