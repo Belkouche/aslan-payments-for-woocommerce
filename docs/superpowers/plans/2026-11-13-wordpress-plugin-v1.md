@@ -1460,38 +1460,7 @@ git commit -m "feat(service): KeyLifecycleService validates key and upserts webh
 
 ### Task 5.1: Add WP + Woo PHPStan stubs
 
-**Files:**
-- Modify: `composer.json`
-- Modify: `phpstan.neon.dist`
-
-- [ ] **Step 1: Add dev deps**
-
-```bash
-composer require --dev php-stubs/wordpress-stubs php-stubs/woocommerce-stubs
-```
-
-- [ ] **Step 2: Update `phpstan.neon.dist`**
-
-```yaml
-parameters:
-  level: 8
-  paths:
-    - src
-  excludePaths:
-    - vendor
-  scanDirectories:
-    - vendor/php-stubs/wordpress-stubs
-    - vendor/php-stubs/woocommerce-stubs
-  bootstrapFiles:
-    - tests/phpstan-bootstrap.php
-```
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add composer.json composer.lock phpstan.neon.dist
-git commit -m "chore: WP + WooCommerce stubs for PHPStan"
-```
+Already done — stubs installed in a Phase 2 cleanup commit f06a375. Skip.
 
 ### Task 5.2: Gateway class, registered via filter
 
