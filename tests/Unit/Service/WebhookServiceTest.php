@@ -115,4 +115,29 @@ final class WebhookServiceTest extends TestCase
         // Reaching here is the assertion: no exception thrown.
         self::assertTrue(true);
     }
+
+    public function test_duplicate_event_id_is_noop(): void
+    {
+        $order = $this->createMock(\WC_Order::class);
+        $order->expects(self::once())->method('payment_complete');
+
+        $seen     = [];
+        $recorder = static function (string $eventId) use (&$seen): bool {
+            if (in_array($eventId, $seen, true)) {
+                return false;
+            }
+            $seen[] = $eventId;
+            return true;
+        };
+
+        $service = new WebhookService();
+        $event   = [
+            'id'    => 'evt_dup',
+            'event' => 'payment.succeeded',
+            'data'  => ['id' => 'pay_01', 'metadata' => ['wc_order_id' => '42']],
+        ];
+
+        $service->handle($event, fn () => $order, $recorder);
+        $service->handle($event, fn () => $order, $recorder);
+    }
 }

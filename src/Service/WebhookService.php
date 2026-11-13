@@ -55,10 +55,16 @@ final class WebhookService
      * Dispatch a verified event to the right order mutation.
      *
      * @param array<string, mixed>      $event       Decoded event body.
-     * @param callable(int): ?\WC_Order $orderLoader Called with the wc_order_id from metadata.
+     * @param callable(int): ?\WC_Order      $orderLoader         Called with the wc_order_id from metadata.
+     * @param (callable(string): bool)|null $idempotencyRecorder Returns true the first time an event id is seen.
      */
-    public function handle(array $event, callable $orderLoader): void
+    public function handle(array $event, callable $orderLoader, ?callable $idempotencyRecorder = null): void
     {
+        $eventId = (string) ($event['id'] ?? '');
+        if ($idempotencyRecorder !== null && $eventId !== '' && ! $idempotencyRecorder($eventId)) {
+            return;
+        }
+
         $eventType = (string) ($event['event'] ?? '');
         $data      = $event['data'] ?? [];
         if (! is_array($data)) {
