@@ -260,7 +260,18 @@ final class Gateway extends WC_Payment_Gateway
             return ['result' => 'failure'];
         } catch (AslanAuthException $e) {
             $order->add_order_note(sprintf('Aslan auth error (merchant key invalid): %s', $e->getMessage()));
-            // TODO(Phase 12): raise persistent admin notice for configuration errors
+            // Admin notice via aslan_admin_notice transient — see Admin\TroubleshootingActions.
+            set_transient(
+                'aslan_admin_notice',
+                [
+                    'err' => sprintf(
+                        /* translators: %d: WooCommerce order ID */
+                        __('Aslan rejected a payment attempt — order #%d. Your API key appears to be invalid or in the wrong mode. Check WooCommerce → Settings → Payments → Aslan.', 'aslan-payments-for-woocommerce'), // phpcs:ignore Generic.Files.LineLength.TooLong
+                        (int) $order->get_id()
+                    ),
+                ],
+                300
+            );
             wc_add_notice(
                 __(
                     'This payment method is temporarily unavailable. Please choose another method.',
@@ -269,9 +280,24 @@ final class Gateway extends WC_Payment_Gateway
                 'error'
             );
             return ['result' => 'failure'];
-        // TODO(Phase 12): raise persistent admin notice
         } catch (AslanWooException $e) {
             $order->add_order_note(sprintf('Aslan error: %s', $e->getMessage()));
+            // Admin notice via aslan_admin_notice transient — see Admin\TroubleshootingActions.
+            set_transient(
+                'aslan_admin_notice',
+                [
+                    'err' => sprintf(
+                        /* translators: 1: WooCommerce order ID, 2: Aslan error code */
+                        __(
+                            'Aslan rejected a payment attempt — order #%1$d. Reason: %2$s. Check your plugin settings.',
+                            'aslan-payments-for-woocommerce'
+                        ),
+                        (int) $order->get_id(),
+                        $e->aslanCode ?? 'unknown_error'
+                    ),
+                ],
+                300
+            );
             wc_add_notice(
                 __(
                     'Payment could not be started. Please try again or choose another method.',
