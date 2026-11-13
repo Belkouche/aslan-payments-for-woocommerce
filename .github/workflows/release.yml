@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer, wp-cli
+      - name: Install dependencies
+        env:
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.GITHUB_TOKEN }}"}}'
+        run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+      - name: Regenerate POT
+        run: wp i18n make-pot . languages/aslan-payments-for-woocommerce.pot --slug=aslan-payments-for-woocommerce --domain=aslan-payments-for-woocommerce
+      - name: Build ZIP
+        run: |
+          mkdir -p build/aslan-payments-for-woocommerce
+          rsync -a --exclude='tests' --exclude='docker' --exclude='docs' --exclude='.git*' --exclude='node_modules' --exclude='build' --exclude='package*.json' ./ build/aslan-payments-for-woocommerce/
+          cd build && zip -r ../aslan-payments-for-woocommerce.zip aslan-payments-for-woocommerce
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: aslan-payments-for-woocommerce.zip
+      - name: Deploy to wordpress.org
+        uses: 10up/action-wordpress-plugin-deploy@stable
+        env:
+          SVN_USERNAME: ${{ secrets.WPORG_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.WPORG_PASSWORD }}
+          SLUG: aslan-payments-for-woocommerce
+          BUILD_DIR: build/aslan-payments-for-woocommerce
