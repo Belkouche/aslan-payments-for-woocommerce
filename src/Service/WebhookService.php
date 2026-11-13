@@ -198,6 +198,16 @@ final class WebhookService
         if ((string) $order->get_meta(RefundService::META_INITIATED_PREFIX . $refundId) !== '') {
             return;
         }
+        // A refund attempt of ours is in flight (API call made, initiated marker not yet
+        // saved): the webhook raced ahead. Skip; Woo creates the record when it returns.
+        foreach ($order->get_meta_data() as $meta) {
+            $key = is_object($meta) && method_exists($meta, 'get_data')
+                ? (string) ($meta->get_data()['key'] ?? '')
+                : '';
+            if (str_starts_with($key, RefundService::META_PENDING_PREFIX)) {
+                return;
+            }
+        }
         foreach ($order->get_refunds() as $existing) {
             if ((string) $existing->get_meta('_aslan_refund_id') === $refundId) {
                 return;

@@ -17,7 +17,15 @@ final class RefundServiceTest extends TestCase
         $order = $this->createMock(WC_Order::class);
         $order->method('get_meta')->with('_aslan_payment_id')->willReturn('pay_01HZ');
         $order->method('get_id')->willReturn(42);
-        $order->expects(self::once())->method('update_meta_data')->with('_aslan_initiated_refund_rf_01HZ', '1');
+        $metaWrites = [];
+        $order->method('update_meta_data')->willReturnCallback(
+            static function ($key, $value) use (&$metaWrites, $order) {
+                $metaWrites[] = $key;
+                return $order;
+            }
+        );
+        $order->expects(self::once())->method('delete_meta_data')
+            ->with(self::stringStartsWith('_aslan_pending_refund_'));
 
         $client = $this->createMock(AslanHttpClient::class);
         $client->expects(self::once())
@@ -28,7 +36,7 @@ final class RefundServiceTest extends TestCase
                     'amount'        => 10000,
                     'reason'        => 'customer_requested',
                 ],
-                'refund_42_pay_01HZ_10000'
+                self::matchesRegularExpression('/^refund_42_pay_01HZ_10000_[0-9a-f-]{32,36}$/')
             )
             ->willReturn(Refund::fromArray([
                 'id'            => 'rf_01HZ',
@@ -43,5 +51,33 @@ final class RefundServiceTest extends TestCase
         $refundId = $service->refund($order, '100.00', 'customer_requested');
 
         self::assertSame('rf_01HZ', $refundId);
+        self::assertCount(2, $metaWrites);
+        self::assertStringStartsWith('_aslan_pending_refund_', $metaWrites[0]);
+        self::assertSame('_aslan_initiated_refund_rf_01HZ', $metaWrites[1]);
+    }
+
+    public function test_same_amount_refunds_use_distinct_idempotency_keys(): void
+    {
+        $order = $this->createMock(WC_Order::class);
+        $order->method('get_meta')->willReturn('pay_01HZ');
+        $order->method('get_id')->willReturn(42);
+
+        $keys   = [];
+        $client = $this->createMock(AslanHttpClient::class);
+        $client->method('createRefund')->willReturnCallback(
+            static function (array $payload, string $key) use (&$keys) {
+                $keys[] = $key;
+                return Refund::fromArray([
+                    'id' => 'rf_' . count($keys), 'transactionId' => 'pay_01HZ', 'amount' => 10000,
+                    'currency' => 'MAD', 'status' => 'pending', 'createdAt' => '2026-11-13T00:00:00Z',
+                ]);
+            }
+        );
+
+        $service = new RefundService($client);
+        $service->refund($order, '100.00');
+        $service->refund($order, '100.00');
+
+        self::assertCount(2, array_unique($keys));
     }
 }

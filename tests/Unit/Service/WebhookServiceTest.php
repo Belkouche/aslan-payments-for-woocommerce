@@ -288,6 +288,7 @@ final class WebhookServiceTest extends TestCase
         $order = $this->aslanOrder();
         $order->method('get_id')->willReturn(42);
         $order->method('get_refunds')->willReturn([]);
+        $order->method('get_meta_data')->willReturn([]);
         $order->method('get_meta')->willReturnCallback(
             static fn ($key = '') => $key === '_aslan_payment_id' ? 'pay_01HZ' : ''
         );
@@ -349,6 +350,26 @@ final class WebhookServiceTest extends TestCase
                 default                           => '',
             }
         );
+
+        (new WebhookService())->handle($this->refundEvent(), fn () => $order);
+        self::assertTrue(true);
+    }
+
+    public function test_refund_is_skipped_while_a_pending_refund_attempt_exists(): void
+    {
+        Functions\expect('wc_create_refund')->never();
+        $order = $this->aslanOrder();
+        $order->method('get_meta')->willReturnCallback(
+            static fn ($key = '') => $key === '_aslan_payment_id' ? 'pay_01HZ' : ''
+        );
+        $meta = new class {
+            /** @return array<string, string> */
+            public function get_data(): array
+            {
+                return ['key' => '_aslan_pending_refund_abc', 'value' => '1'];
+            }
+        };
+        $order->method('get_meta_data')->willReturn([$meta]);
 
         (new WebhookService())->handle($this->refundEvent(), fn () => $order);
         self::assertTrue(true);

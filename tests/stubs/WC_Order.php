@@ -67,6 +67,15 @@ class WC_Order
     {
     }
 
+    public function delete_meta_data($key)
+    {
+    }
+
+    public function get_meta_data()
+    {
+        return [];
+    }
+
     public function save()
     {
         return 0;
