@@ -40,6 +40,7 @@ final class Plugin
         $checkoutService = new CheckoutService($httpClient);
 
         (new Rest\WebhookRoute($config, new Service\WebhookService()))->register();
+        (new WooCommerce\OrderStatus())->register();
 
         add_filter(
             'woocommerce_payment_gateways',
