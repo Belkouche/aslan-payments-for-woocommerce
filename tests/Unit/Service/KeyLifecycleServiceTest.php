@@ -26,7 +26,7 @@ final class KeyLifecycleServiceTest extends TestCase
             'id' => 'ak_01HZ',
             'name' => 'default',
             'type' => 'test',
-            'prefix' => 'sk_test_mA3xZ',
+            'prefix' => 'mA3xZ',
             'createdAt' => '2026-01-01T00:00:00Z',
         ]);
         $client->expects(self::once())->method('pingApiKeys')->willReturn([$apiKey]);
@@ -75,7 +75,7 @@ final class KeyLifecycleServiceTest extends TestCase
             'id' => 'ak_01HZ',
             'name' => 'default',
             'type' => 'live',
-            'prefix' => 'sk_live_mA3xZ',
+            'prefix' => 'mA3xZ',
             'createdAt' => '2026-01-01T00:00:00Z',
         ]);
         $client->method('pingApiKeys')->willReturn([$apiKey]);
@@ -84,5 +84,74 @@ final class KeyLifecycleServiceTest extends TestCase
 
         $this->expectException(WrongModeException::class);
         $service->register('test', 'sk_live_mA3xZ_secret', self::WEBHOOK_URL);
+    }
+
+    public function test_register_picks_key_matching_pasted_prefix_not_first(): void
+    {
+        $client = $this->createMock(AslanHttpClient::class);
+
+        $otherKey = ApiKey::fromArray([
+            'id' => 'ak_OTHER',
+            'name' => 'other',
+            'type' => 'test',
+            'environment' => 'test',
+            'prefix' => 'other123',
+            'status' => 'active',
+            'secretKey' => null,
+            'lastUsedAt' => null,
+            'createdAt' => '2026-01-01T00:00:00Z',
+        ]);
+        $pastedKey = ApiKey::fromArray([
+            'id' => 'ak_PASTED',
+            'name' => 'default',
+            'type' => 'test',
+            'environment' => 'test',
+            'prefix' => 'mA3xZ',
+            'status' => 'active',
+            'secretKey' => null,
+            'lastUsedAt' => null,
+            'createdAt' => '2026-01-02T00:00:00Z',
+        ]);
+        $client->expects(self::once())->method('pingApiKeys')->willReturn([$otherKey, $pastedKey]);
+
+        $webhookConfig = WebhookConfig::fromArray([
+            'id' => 'wh_01',
+            'url' => 'https://shop.example.ma/wp-json/aslan/v1/webhook',
+            'status' => 'active',
+            'events' => [],
+            'signingSecret' => 'whsec_x',
+            'apiVersion' => '2026-11-01',
+            'createdAt' => '2026-11-13T00:00:00Z',
+            'updatedAt' => '2026-11-13T00:00:00Z',
+        ]);
+        $client->method('upsertWebhookConfig')->willReturn($webhookConfig);
+
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key) => $client);
+
+        $result = $service->register('test', 'sk_test_mA3xZ_secret', 'https://shop.example.ma/wp-json/aslan/v1/webhook');
+
+        self::assertSame('ak_PASTED', $result->apiKeyId);
+    }
+
+    public function test_register_throws_when_no_key_prefix_matches(): void
+    {
+        $client = $this->createMock(AslanHttpClient::class);
+        $otherKey = ApiKey::fromArray([
+            'id' => 'ak_OTHER',
+            'name' => 'other',
+            'type' => 'test',
+            'environment' => 'test',
+            'prefix' => 'something-else',
+            'status' => 'active',
+            'secretKey' => null,
+            'lastUsedAt' => null,
+            'createdAt' => '2026-01-01T00:00:00Z',
+        ]);
+        $client->method('pingApiKeys')->willReturn([$otherKey]);
+
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key) => $client);
+
+        $this->expectException(\Aslan\Woo\Service\InvalidKeyException::class);
+        $service->register('test', 'sk_test_mA3xZ_secret', 'https://shop.example.ma/wp-json/aslan/v1/webhook');
     }
 }

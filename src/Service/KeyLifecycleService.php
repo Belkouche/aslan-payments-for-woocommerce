@@ -36,9 +36,11 @@ final class KeyLifecycleService
             throw new InvalidKeyException('Secret key rejected by Aslan', 0, $e);
         }
 
-        $apiKey = $apiKeys[0] ?? null;
+        $apiKey = $this->findKeyByPrefix($apiKeys, $secretKey);
         if ($apiKey === null) {
-            throw new InvalidKeyException('API key validation returned no identity');
+            throw new InvalidKeyException(
+                'API key listing did not contain the key being registered — unexpected SDK state'
+            );
         }
         if ($apiKey->type !== $expectedMode) {
             throw new WrongModeException(
@@ -69,4 +71,25 @@ final class KeyLifecycleService
         );
     }
     // phpcs:enable WordPress.Security.EscapeOutput.ExceptionNotEscaped
+
+    /**
+     * Pick the ApiKey whose prefix matches the secret the merchant pasted.
+     * Secret key format is sk_{type}_{prefix}_{secret}.
+     *
+     * @param list<\Aslan\Payment\Dto\ApiKey> $apiKeys
+     */
+    private function findKeyByPrefix(array $apiKeys, string $secretKey): ?\Aslan\Payment\Dto\ApiKey
+    {
+        $parts = explode('_', $secretKey);
+        if (count($parts) < 4) {
+            return null;
+        }
+        $pastedPrefix = $parts[2];
+        foreach ($apiKeys as $key) {
+            if ($key->prefix === $pastedPrefix) {
+                return $key;
+            }
+        }
+        return null;
+    }
 }
