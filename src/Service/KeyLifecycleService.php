@@ -28,6 +28,7 @@ final class KeyLifecycleService
     // phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped -- exception messages are not HTML output.
     public function register(string $expectedMode, string $secretKey, string $webhookUrl): KeyRegistrationResult
     {
+        $secretKey = trim($secretKey);
         $client = ($this->httpClientFactory)($secretKey);
 
         try {
@@ -58,12 +59,8 @@ final class KeyLifecycleService
             );
         }
 
-        if ($webhook->signingSecret === null) {
-            throw new WebhookRegistrationException(
-                'Aslan did not return a signing secret. Try "Re-register webhook".'
-            );
-        }
-
+        // signingSecret is null on a non-rotating re-upsert. Caller must keep the
+        // previously stored secret unchanged when that happens.
         return new KeyRegistrationResult(
             apiKeyId: $apiKey->id,
             signingSecret: $webhook->signingSecret,
@@ -73,8 +70,10 @@ final class KeyLifecycleService
     // phpcs:enable WordPress.Security.EscapeOutput.ExceptionNotEscaped
 
     /**
-     * Pick the ApiKey whose prefix matches the secret the merchant pasted.
-     * Secret key format is sk_{type}_{prefix}_{secret}.
+     * Pick the ApiKey whose prefix matches the pasted secret (format sk_{type}_{prefix}_{secret}).
+     *
+     * Assumes the Aslan API guarantees unique prefixes across a merchant's active keys.
+     * If that invariant ever changes server-side, we'd silently pick the first match.
      *
      * @param list<\Aslan\Payment\Dto\ApiKey> $apiKeys
      */

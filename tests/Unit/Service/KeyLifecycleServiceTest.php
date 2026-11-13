@@ -154,4 +154,45 @@ final class KeyLifecycleServiceTest extends TestCase
         $this->expectException(\Aslan\Woo\Service\InvalidKeyException::class);
         $service->register('test', 'sk_test_mA3xZ_secret', 'https://shop.example.ma/wp-json/aslan/v1/webhook');
     }
+
+    public function test_register_tolerates_null_signing_secret_on_re_upsert(): void
+    {
+        $client = $this->createMock(AslanHttpClient::class);
+
+        $apiKey = ApiKey::fromArray([
+            'id' => 'ak_01HZ',
+            'name' => 'default',
+            'type' => 'test',
+            'environment' => 'test',
+            'prefix' => 'mA3xZ',
+            'status' => 'active',
+            'secretKey' => null,
+            'lastUsedAt' => null,
+            'createdAt' => '2026-01-01T00:00:00Z',
+        ]);
+        $client->method('pingApiKeys')->willReturn([$apiKey]);
+
+        $webhookConfig = WebhookConfig::fromArray([
+            'id' => 'wh_01',
+            'url' => 'https://shop.example.ma/wp-json/aslan/v1/webhook',
+            'status' => 'active',
+            'events' => [],
+            'signingSecret' => null,  // null on re-upsert — the SDK contract
+            'apiVersion' => '2026-11-01',
+            'createdAt' => '2026-11-13T00:00:00Z',
+            'updatedAt' => '2026-11-13T00:00:00Z',
+        ]);
+        $client->method('upsertWebhookConfig')->willReturn($webhookConfig);
+
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key) => $client);
+
+        $result = $service->register(
+            'test',
+            'sk_test_mA3xZ_secret',
+            'https://shop.example.ma/wp-json/aslan/v1/webhook',
+        );
+
+        self::assertNull($result->signingSecret);
+        self::assertSame('ak_01HZ', $result->apiKeyId);
+    }
 }

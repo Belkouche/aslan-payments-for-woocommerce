@@ -19,6 +19,11 @@ use Closure;
  * an SDK wired to a fake HTTP client and the Plugin class can wire up the SDK
  * once Config is ready. The factory must build the SDK with maxRetries: 0 —
  * this class owns connection retries.
+ *
+ * @internal Marked non-final so tests can `createMock(AslanHttpClient::class)`.
+ * Do NOT subclass — non-trivial retry + exception-mapping semantics live here
+ * and a subclass can silently break them. For future testability needs,
+ * extract an interface rather than subclassing.
  */
 class AslanHttpClient
 {
@@ -141,8 +146,9 @@ class AslanHttpClient
 
     /**
      * Validate a secret key by calling GET /api-keys and return the list payload.
-     * Succeeds for any valid key, 401s for an invalid one. Doubles as "what merchant
-     * is this key for" — the ApiKey DTO carries a merchantId field (see SDK).
+     * Succeeds for any valid key (returns at least the key being used), 401s for an invalid one.
+     * Callers identify the pasted key by matching its prefix to the ApiKey's `prefix` field —
+     * the SDK's ApiKey DTO has NO merchantId; key identification is prefix-based.
      *
      * @return list<\Aslan\Payment\Dto\ApiKey>
      */
