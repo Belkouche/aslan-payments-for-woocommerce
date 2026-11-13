@@ -1247,6 +1247,14 @@ git commit -m "feat(client): connection-retry with backoff"
 
 **Why fourth:** this is the "automatic setup" magic the spec sells. Settings page writes keys → this service validates each key via `pingApiKeys()` → upserts webhook via `upsertWebhookConfig()` → stores returned signing secret. One service, one responsibility.
 
+> **SDK reality check (learned during implementation, 2026-11-13):**
+> - `Aslan\Payment\Dto\ApiKey` has **no `merchantId` field**. The DTO carries: id, name, environment, prefix, secretKey, status, lastUsedAt, createdAt, type, publishableKey, revokedAt. The plan's original code used `$apiKey->merchantId` — it doesn't exist.
+> - `KeyRegistrationResult` was updated to carry `apiKeyId` (`ApiKey->id`) + `signingSecret` + `webhookUrl` instead of a merchant id.
+> - **Downstream impact (Phase 12):** the admin UI that said "verified — merchant %s" and the option key `aslan_woo_{mode}_merchant_id` now store/show `apiKeyId` instead. The setup status card wording changes from "merchant mch_01HZ" to "key ak_01HZ". The user-facing phrasing can be "verified — API key %s" or "verified" (no identifier) since merchants don't operate on API key IDs.
+> - `AslanHttpClient` had to drop its `final` modifier so `createMock(AslanHttpClient::class)` works. Alternative would be an interface, but 4-line change vs. a new abstraction isn't worth it for now.
+> - The 6 classes the plan put in one file (`KeyLifecycleService` + 5 exception/result classes) were split into 6 files — `phpcs` PSR-1 MultipleClasses rule rejects multiple classes per file, consistent with Phase 3.
+> - **Known issue, filed as follow-up:** `register()` uses `$apiKeys[0]` from `pingApiKeys()`. If a merchant has several active keys, the first returned may not be the one just pasted. The correct match is by prefix: parse `sk_{type}_{prefix}_{secret}` from the pasted key and find the `ApiKey` with that prefix. Fixed in a Phase 4 follow-up commit — see below.
+
 ### Task 4.1: Validate-and-register for the active mode
 
 **Files:**
