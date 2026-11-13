@@ -725,6 +725,15 @@ git commit -m "feat(config): mode-aware wp_options wrapper"
 
 **Why third:** key downstream dependency — every service in Layer 2 uses this. Making it WP-free means we can unit-test every service without a WP bootstrap.
 
+> **SDK reality check (learned during implementation, 2026-11-13):**
+> - `Aslan\Payment\Aslan`, `AslanException`, and all resource classes (`CheckoutSessions`, `WebhooksConfig`, `Refunds`, `ApiKeys`) are `final`. They cannot be subclassed or mocked with `createMock`.
+> - Testing seam: inject a fake `Aslan\Payment\HttpClient\HttpClientInterface` into a real `Aslan` constructor, with `maxRetries: 0` so the SDK's own retry doesn't interfere with ours.
+> - `AslanException` exposes `public readonly string $errorCode`, `public readonly int $httpStatus`, `public readonly ?string $requestId`. Use direct property access, not `method_exists()`.
+> - Build test exceptions with static factories: `AslanException::authenticationError(...)`, `::validationError(...)`, `::serverError(...)`, `::networkError(...)`.
+> - `CheckoutSession::fromArray` requires a `token` field — fixtures must include it.
+> - Network failures come through as `errorCode === 'NETWORK_ERROR'` with `httpStatus === 0`.
+> - `AslanRequestException` CANNOT be `final` — `AslanAuthException` extends it. The plan's Task 3.1 code was split into 4 files, one class each, with `AslanRequestException` non-final. This is the committed implementation.
+
 ### Task 3.1: `AslanWooException` hierarchy
 
 **Files:**
