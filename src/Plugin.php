@@ -55,6 +55,9 @@ final class Plugin
         $payShortcode->register();
         (new Shortcode\PayBlock($payShortcode))->register();
 
+        (new Admin\SetupStatusCard($config))->register();
+        (new Admin\TroubleshootingActions($config, $keyLifecycle))->register();
+
         add_filter(
             'woocommerce_payment_gateways',
             static function (array $gateways) use ($config, $checkoutService, $refundService, $keyLifecycle): array {
