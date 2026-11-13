@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Aslan\Woo\Service;
 
+use Aslan\Woo\Shortcode\PaymentCpt;
+
 final class WebhookService
 {
     public const MAX_AGE_SECONDS = 300;
@@ -95,14 +97,27 @@ final class WebhookService
             $data = $data['refund'];
         }
         $wcOrderId = isset($data['metadata']['wc_order_id']) ? (int) $data['metadata']['wc_order_id'] : 0;
-        if ($wcOrderId <= 0) {
-            return;
-        }
-        $order = $orderLoader($wcOrderId);
-        if ($order === null) {
-            return;
-        }
+        $cptId     = isset($data['metadata']['aslan_payment_id']) ? (int) $data['metadata']['aslan_payment_id'] : 0;
 
+        // wc_order_id wins if both are present (should not happen).
+        if ($wcOrderId > 0) {
+            $order = $orderLoader($wcOrderId);
+            if ($order === null) {
+                return;
+            }
+            $this->mutateOrder($eventType, $data, $order, $isRefundEvent);
+            return;
+        }
+        if ($cptId > 0 && ! $isRefundEvent) {
+            $this->mutateCpt($eventType, $data, $cptId);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private function mutateOrder(string $eventType, array $data, \WC_Order $order, bool $isRefundEvent): void
+    {
         // Reject events for orders not using the Aslan gateway — a forged webhook
         // with a wc_order_id metadata pointing at a non-Aslan order must not mutate it.
         if ($order->get_payment_method() !== 'aslan') {
@@ -174,6 +189,61 @@ final class WebhookService
 
             default:
                 // Ignore unknown events: Aslan may add new types before we support them.
+                break;
+        }
+    }
+
+    /**
+     * Standalone [aslan_pay] payments: update the aslan_payment CPT's status meta.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function mutateCpt(string $eventType, array $data, int $cptId): void
+    {
+        $post = get_post($cptId);
+        if (! $post instanceof \WP_Post || $post->post_type !== PaymentCpt::TYPE) {
+            return;
+        }
+        // Same guards as the order path: currency and amount must match what we stored.
+        if ((string) ($data['currency'] ?? '') !== 'MAD') {
+            return;
+        }
+        $storedCentimes = (int) get_post_meta($cptId, 'amount', true);
+        $eventCentimes  = isset($data['amount']) ? (int) $data['amount'] : 0;
+        if ($storedCentimes <= 0 || $eventCentimes !== $storedCentimes) {
+            return;
+        }
+
+        $current = (string) get_post_meta($cptId, 'status', true);
+        $open    = in_array($current, [PaymentCpt::STATUS_PENDING, PaymentCpt::STATUS_PENDING_CASH], true);
+
+        switch ($eventType) {
+            case 'payment.succeeded':
+                // Succeeded is terminal; a late failed/pending_cash event must not undo it.
+                if ($current === PaymentCpt::STATUS_SUCCEEDED) {
+                    return;
+                }
+                $paymentId = (string) ($data['id'] ?? '');
+                if ($paymentId === '') {
+                    return;
+                }
+                update_post_meta($cptId, PaymentCpt::META_PAYMENT_ID, $paymentId);
+                update_post_meta($cptId, 'status', PaymentCpt::STATUS_SUCCEEDED);
+                break;
+
+            case 'payment.failed':
+                if ($open) {
+                    update_post_meta($cptId, 'status', PaymentCpt::STATUS_FAILED);
+                }
+                break;
+
+            case 'payment.pending_cash':
+                if ($current === PaymentCpt::STATUS_PENDING) {
+                    update_post_meta($cptId, 'status', PaymentCpt::STATUS_PENDING_CASH);
+                }
+                break;
+
+            default:
                 break;
         }
     }

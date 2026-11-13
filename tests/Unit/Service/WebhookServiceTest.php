@@ -453,4 +453,81 @@ final class WebhookServiceTest extends TestCase
 
         (new WebhookService())->handle($this->refundEvent(), fn () => $order);
     }
+
+    /**
+     * @param array<string, string> $meta
+     * @return array<string, string> updated meta, by reference-free capture
+     */
+    private function runCptEvent(string $type, array $data, array $meta, string $postType = 'aslan_payment'): array
+    {
+        $post            = new \WP_Post();
+        $post->post_type = $postType;
+        Functions\when('get_post')->justReturn($post);
+        Functions\when('get_post_meta')->alias(
+            static fn (int $id, string $key) => $meta[$key] ?? ''
+        );
+        $written = [];
+        Functions\when('update_post_meta')->alias(
+            static function (int $id, string $key, $value) use (&$written): bool {
+                $written[$key] = $value;
+                return true;
+            }
+        );
+
+        (new WebhookService())->handle(
+            [
+                'id'    => 'evt_cpt',
+                'event' => $type,
+                'data'  => $data + ['metadata' => ['aslan_payment_id' => '7']],
+            ],
+            fn () => null
+        );
+        return $written;
+    }
+
+    public function test_cpt_payment_succeeded_updates_status(): void
+    {
+        $written = $this->runCptEvent(
+            'payment.succeeded',
+            ['id' => 'pay_9', 'amount' => 50000, 'currency' => 'MAD'],
+            ['amount' => '50000', 'status' => 'pending']
+        );
+
+        self::assertSame('succeeded', $written['status']);
+        self::assertSame('pay_9', $written['aslan_payment_ref']);
+    }
+
+    public function test_cpt_amount_mismatch_is_ignored(): void
+    {
+        $written = $this->runCptEvent(
+            'payment.succeeded',
+            ['id' => 'pay_9', 'amount' => 100, 'currency' => 'MAD'],
+            ['amount' => '50000', 'status' => 'pending']
+        );
+
+        self::assertSame([], $written);
+    }
+
+    public function test_cpt_wrong_post_type_is_ignored(): void
+    {
+        $written = $this->runCptEvent(
+            'payment.succeeded',
+            ['id' => 'pay_9', 'amount' => 50000, 'currency' => 'MAD'],
+            ['amount' => '50000', 'status' => 'pending'],
+            'post'
+        );
+
+        self::assertSame([], $written);
+    }
+
+    public function test_cpt_failed_does_not_regress_succeeded(): void
+    {
+        $written = $this->runCptEvent(
+            'payment.failed',
+            ['id' => 'pay_9', 'amount' => 50000, 'currency' => 'MAD'],
+            ['amount' => '50000', 'status' => 'succeeded']
+        );
+
+        self::assertSame([], $written);
+    }
 }

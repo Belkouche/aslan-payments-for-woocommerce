@@ -11,4 +11,5 @@ if (getenv('ASLAN_WOO_SUITE') === 'integration') {
 } else {
     // Unit suite: WooCommerce is not loaded, provide minimal stand-ins to mock.
     require_once __DIR__ . '/stubs/WC_Order.php';
+    require_once __DIR__ . '/stubs/WP_Post.php';
 }

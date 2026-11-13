@@ -44,6 +44,8 @@ final class Plugin
         (new WooCommerce\OrderStatus())->register();
         (new WooCommerce\ThankYouPage())->register();
         (new Rest\OrderStatusRoute())->register();
+        (new Shortcode\PaymentCpt())->register();
+        (new Rest\ShortcodePayRoute($httpClient))->register();
 
         add_filter(
             'woocommerce_payment_gateways',
