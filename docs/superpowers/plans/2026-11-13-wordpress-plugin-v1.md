@@ -312,6 +312,7 @@ final class Plugin
         if (self::$instance === null) {
             self::boot();
         }
+        assert(self::$instance !== null);
         return self::$instance;
     }
 
@@ -391,19 +392,29 @@ if (! defined('ABSPATH')) { define('ABSPATH', '/dev/null/'); }
 
 - [ ] **Step 4: Write `phpcs.xml.dist`**
 
+> **Decision (2026-11-13):** the plugin code is PSR-12 style (typed PHP 8.2+, short array syntax, modern braces). Instead of the full `WordPress` ruleset (which mandates WPCS style — tabs, Yoda conditions, `array()` syntax, docblocks everywhere — and would force us to un-modernize the code), we use `WordPress-Core` for structural rules only, then explicitly add WP-specific **security** and **escaping** sniffs (the ones that matter for a payment plugin). This matches how Stripe, Mollie, and Adyen's current WooCommerce plugins lint their PHP.
+
 ```xml
 <?xml version="1.0"?>
 <ruleset name="Aslan Woo Plugin">
-  <description>WordPress Coding Standards for Aslan Payments for WooCommerce</description>
+  <description>Security/escaping sniffs from WPCS; PSR-12 for everything else.</description>
   <file>src</file>
   <file>aslan-payments-for-woocommerce.php</file>
   <arg name="extensions" value="php"/>
   <arg name="colors"/>
   <arg value="sp"/>
-  <rule ref="WordPress">
-    <exclude name="WordPress.Files.FileName"/>
-    <exclude name="Generic.Commenting.DocComment.MissingShort"/>
-  </rule>
+
+  <!-- PSR-12 is the base style for modern typed PHP. -->
+  <rule ref="PSR12"/>
+
+  <!-- Security/escaping sniffs that the WordPress ruleset provides. -->
+  <rule ref="WordPress.Security"/>
+  <rule ref="WordPress.WP.I18n"/>
+  <rule ref="WordPress.WP.AlternativeFunctions"/>
+  <rule ref="WordPress.PHP.NoSilencedErrors"/>
+  <rule ref="WordPress.DB.PreparedSQL"/>
+  <rule ref="WordPress.DB.PreparedSQLPlaceholders"/>
+
   <config name="minimum_supported_wp_version" value="6.4"/>
   <config name="testVersion" value="8.2-"/>
 </ruleset>
