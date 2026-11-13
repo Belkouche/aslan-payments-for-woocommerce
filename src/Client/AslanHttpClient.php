@@ -20,7 +20,7 @@ use Closure;
  * once Config is ready. The factory must build the SDK with maxRetries: 0 —
  * this class owns connection retries.
  */
-final class AslanHttpClient
+class AslanHttpClient
 {
     private ?Aslan $sdk = null;
 
