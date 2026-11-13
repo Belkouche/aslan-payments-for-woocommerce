@@ -72,6 +72,13 @@ final class Config
         return $this->stringOption(self::OPT_WEBHOOK_URL_OVERRIDE);
     }
 
+    /** The URL registered with Aslan: the override when set, else this site's REST endpoint. */
+    public function webhookUrl(): string
+    {
+        $override = trim($this->webhookUrlOverride());
+        return $override !== '' ? $override : rest_url('aslan/v1/webhook');
+    }
+
     private function stringOption(string $name): string
     {
         $v = get_option($name, '');

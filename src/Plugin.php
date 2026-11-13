@@ -39,6 +39,11 @@ final class Plugin
         $httpClient      = new AslanHttpClient(AslanHttpClient::sdkFactory($config->activeSecretKey()));
         $checkoutService = new CheckoutService($httpClient);
         $refundService   = new Service\RefundService($httpClient);
+        $keyLifecycle    = new Service\KeyLifecycleService(
+            static fn (string $secretKey): AslanHttpClient => new AslanHttpClient(
+                AslanHttpClient::sdkFactory($secretKey)
+            )
+        );
 
         (new Rest\WebhookRoute($config, new Service\WebhookService()))->register();
         (new WooCommerce\OrderStatus())->register();
@@ -52,8 +57,8 @@ final class Plugin
 
         add_filter(
             'woocommerce_payment_gateways',
-            static function (array $gateways) use ($config, $checkoutService, $refundService): array {
-                $gateways[] = new WooCommerce\Gateway($config, $checkoutService, $refundService);
+            static function (array $gateways) use ($config, $checkoutService, $refundService, $keyLifecycle): array {
+                $gateways[] = new WooCommerce\Gateway($config, $checkoutService, $refundService, $keyLifecycle);
                 return $gateways;
             }
         );

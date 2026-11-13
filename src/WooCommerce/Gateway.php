@@ -9,6 +9,7 @@ use Aslan\Woo\Client\AslanTransientException;
 use Aslan\Woo\Client\AslanWooException;
 use Aslan\Woo\Config;
 use Aslan\Woo\Service\CheckoutService;
+use Aslan\Woo\Service\KeyLifecycleService;
 use Aslan\Woo\Service\NonWholeMadException;
 use Aslan\Woo\Service\RefundNotPossibleException;
 use Aslan\Woo\Service\RefundService;
@@ -29,6 +30,7 @@ final class Gateway extends WC_Payment_Gateway
         private readonly Config $config,
         private readonly CheckoutService $checkoutService,
         private readonly RefundService $refundService,
+        private readonly KeyLifecycleService $keyLifecycle,
     ) {
         $this->id                 = self::ID;
         $this->method_title       = __('Aslan', 'aslan-payments-for-woocommerce');
@@ -115,7 +117,7 @@ final class Gateway extends WC_Payment_Gateway
 
     /**
      * Mirrors the settings blob WooCommerce just saved into our canonical
-     * aslan_woo_* options.
+     * aslan_woo_* options, then registers each changed key with Aslan.
      */
     public function persist_bridged_options(): void
     {
@@ -124,12 +126,61 @@ final class Gateway extends WC_Payment_Gateway
             $settings = [];
         }
 
+        $previousUrl  = $this->config->webhookUrl();
+        $previousKeys = [
+            Config::MODE_TEST => $this->rawOption(Config::OPT_TEST_KEY),
+            Config::MODE_LIVE => $this->rawOption(Config::OPT_LIVE_KEY),
+        ];
+
         update_option(Config::OPT_MODE, $this->setting($settings, 'mode', 'test'));
         update_option(Config::OPT_TEST_KEY, $this->setting($settings, 'test_secret_key'));
         update_option(Config::OPT_LIVE_KEY, $this->setting($settings, 'live_secret_key'));
         update_option(Config::OPT_TITLE, $this->setting($settings, 'title'));
         update_option(Config::OPT_SHOW_TEST_BANNER, $this->setting($settings, 'show_test_banner', 'yes') === 'yes');
         update_option(Config::OPT_WEBHOOK_URL_OVERRIDE, $this->setting($settings, 'webhook_url_override'));
+
+        $siteWebhookUrl = $this->config->webhookUrl();
+        $secretOptions  = [
+            Config::MODE_TEST => Config::OPT_TEST_WEBHOOK_SECRET,
+            Config::MODE_LIVE => Config::OPT_LIVE_WEBHOOK_SECRET,
+        ];
+
+        $events = [];
+        foreach ([Config::MODE_TEST => 'test_secret_key', Config::MODE_LIVE => 'live_secret_key'] as $mode => $field) {
+            $key = trim($this->setting($settings, $field));
+            if ($key === '' || $this->looksMasked($key)) {
+                continue;
+            }
+            // Unchanged key + unchanged URL + secret already stored: nothing to re-register.
+            if (
+                $key === $previousKeys[$mode]
+                && $siteWebhookUrl === $previousUrl
+                && $this->rawOption($secretOptions[$mode]) !== ''
+            ) {
+                continue;
+            }
+            try {
+                $result = $this->keyLifecycle->register($mode, $key, $siteWebhookUrl);
+                // Null on a non-rotating re-upsert: keep the stored secret.
+                if ($result->signingSecret !== null) {
+                    update_option($secretOptions[$mode], $result->signingSecret);
+                }
+                $events[$mode] = ['ok' => true, 'mode' => $mode, 'apiKeyId' => $result->apiKeyId];
+            } catch (\Throwable $e) {
+                $events[$mode] = ['ok' => false, 'mode' => $mode, 'error' => $e->getMessage()];
+            }
+        }
+
+        if ($events !== []) {
+            // Keep the previous outcome for a mode that was not touched by this save.
+            $previous = get_option('aslan_woo_last_setup', []);
+            foreach (is_array($previous) ? ($previous['events'] ?? []) : [] as $evt) {
+                if (is_array($evt) && isset($evt['mode']) && ! isset($events[$evt['mode']])) {
+                    $events[$evt['mode']] = $evt;
+                }
+            }
+            update_option('aslan_woo_last_setup', ['at' => time(), 'events' => array_values($events)]);
+        }
     }
 
     /** @param array<mixed> $settings */
@@ -137,6 +188,17 @@ final class Gateway extends WC_Payment_Gateway
     {
         $v = $settings[$name] ?? $default;
         return is_string($v) ? $v : $default;
+    }
+
+    private function rawOption(string $name): string
+    {
+        $v = get_option($name, '');
+        return is_string($v) ? $v : '';
+    }
+
+    private function looksMasked(string $key): bool
+    {
+        return str_contains($key, '••') || str_contains($key, '●') || str_contains($key, '****');
     }
 
     public function is_available(): bool
