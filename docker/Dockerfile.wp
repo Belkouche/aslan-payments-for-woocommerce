@@ -1,4 +1,4 @@
-FROM wordpress:6.7-php8.3-apache
+FROM wordpress:6.8-php8.4-apache
 RUN docker-php-ext-install opcache
 RUN apt-get update && apt-get install -y less && rm -rf /var/lib/apt/lists/*
 RUN curl -sSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer

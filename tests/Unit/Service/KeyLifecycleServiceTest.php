@@ -195,4 +195,49 @@ final class KeyLifecycleServiceTest extends TestCase
         self::assertNull($result->signingSecret);
         self::assertSame('ak_01HZ', $result->apiKeyId);
     }
+
+    public function test_register_accepts_three_part_current_key_format(): void
+    {
+        // Current server format: sk_<type>_<prefix><secret> (no separator between
+        // prefix and secret). The prefix is the first 8 chars of the body.
+        $apiKey = ApiKey::fromArray([
+            'id'        => 'ak_short',
+            'name'      => 'default',
+            'type'      => 'test',
+            'prefix'    => 'abcd1234',
+            'createdAt' => '2026-01-01T00:00:00Z',
+        ]);
+        $webhookConfig = WebhookConfig::fromArray([
+            'id'            => 'wh_short',
+            'url'           => self::WEBHOOK_URL,
+            'status'        => 'active',
+            'events'        => [],
+            'signingSecret' => 'whsec_xyz',
+            'apiVersion'    => '2026-11-01',
+            'createdAt'     => '2026-11-13T00:00:00Z',
+            'updatedAt'     => '2026-11-13T00:00:00Z',
+        ]);
+        $client = $this->createMock(AslanHttpClient::class);
+        $client->method('pingApiKeys')->willReturn([$apiKey]);
+        $client->method('upsertWebhookConfig')->willReturn($webhookConfig);
+
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key) => $client);
+        // 3-part shape: sk_<type>_<prefix 8 hex><secret>. Assembled at runtime
+        // so the string literal does not trip GitHub's secret-scan heuristics.
+        $fakeKey = 'sk_test_' . 'abcd1234' . str_repeat('ZZ', 28);
+        $result  = $service->register('test', $fakeKey, self::WEBHOOK_URL);
+
+        self::assertSame('ak_short', $result->apiKeyId);
+        self::assertSame('whsec_xyz', $result->signingSecret);
+    }
+
+    public function test_register_rejects_key_with_too_few_parts(): void
+    {
+        $client = $this->createMock(AslanHttpClient::class);
+        $client->method('pingApiKeys')->willReturn([]);
+
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key) => $client);
+        $this->expectException(InvalidKeyException::class);
+        $service->register('test', 'sk_test', self::WEBHOOK_URL);
+    }
 }

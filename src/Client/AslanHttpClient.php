@@ -38,11 +38,19 @@ class AslanHttpClient
      */
     public static function sdkFactory(string $secretKey, ?HttpClientInterface $httpClient = null): Closure
     {
-        return static fn (): Aslan => new Aslan(
-            $secretKey,
-            maxRetries: 0,
-            httpClient: $httpClient,
-        );
+        // Allow deployments to point the SDK at a non-default Aslan environment
+        // (e.g. staging). Defaults to the SDK's own baseUrl when unset or empty.
+        // Prefer the filter for runtime overrides; the constant is for Docker/CI.
+        $baseUrl = '';
+        if (defined('ASLAN_WOO_API_BASE_URL') && is_string(ASLAN_WOO_API_BASE_URL)) {
+            $baseUrl = (string) ASLAN_WOO_API_BASE_URL;
+        }
+        if (function_exists('apply_filters')) {
+            $baseUrl = (string) apply_filters('aslan_woo_api_base_url', $baseUrl);
+        }
+        return static fn (): Aslan => $baseUrl === ''
+            ? new Aslan($secretKey, maxRetries: 0, httpClient: $httpClient)
+            : new Aslan($secretKey, baseUrl: $baseUrl, maxRetries: 0, httpClient: $httpClient);
     }
 
     /** @var array<int, int> milliseconds to sleep between attempts */

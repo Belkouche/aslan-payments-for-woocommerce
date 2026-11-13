@@ -70,20 +70,31 @@ final class KeyLifecycleService
     // phpcs:enable WordPress.Security.EscapeOutput.ExceptionNotEscaped
 
     /**
-     * Pick the ApiKey whose prefix matches the pasted secret (format sk_{type}_{prefix}_{secret}).
+     * Pick the ApiKey whose prefix matches the pasted secret.
      *
-     * Assumes the Aslan API guarantees unique prefixes across a merchant's active keys.
-     * If that invariant ever changes server-side, we'd silently pick the first match.
+     * The server's current key format is `sk_<type>_<prefix><secret>` with the
+     * 8-char hex prefix joined directly to the secret body (3 underscore parts).
+     * The legacy split-key form `sk_<type>_<prefix>_<secret>` (4 parts) is
+     * accepted too for stores that stored keys issued under the older scheme.
+     *
+     * Assumes the Aslan API guarantees unique prefixes across a merchant's
+     * active keys. If that invariant ever changes server-side, we'd silently
+     * pick the first match.
      *
      * @param list<\Aslan\Payment\Dto\ApiKey> $apiKeys
      */
     private function findKeyByPrefix(array $apiKeys, string $secretKey): ?\Aslan\Payment\Dto\ApiKey
     {
         $parts = explode('_', $secretKey);
-        if (count($parts) < 4) {
+        if (count($parts) < 3) {
             return null;
         }
-        $pastedPrefix = $parts[2];
+        // Legacy split-key (4+ parts): prefix is the third underscore-separated field.
+        // Current format (3 parts): first 8 chars of the hex body is the prefix.
+        $pastedPrefix = count($parts) >= 4 ? $parts[2] : substr($parts[2], 0, 8);
+        if ($pastedPrefix === '') {
+            return null;
+        }
         foreach ($apiKeys as $key) {
             if ($key->prefix === $pastedPrefix) {
                 return $key;
