@@ -42,6 +42,8 @@ final class Plugin
 
         (new Rest\WebhookRoute($config, new Service\WebhookService()))->register();
         (new WooCommerce\OrderStatus())->register();
+        (new WooCommerce\ThankYouPage())->register();
+        (new Rest\OrderStatusRoute())->register();
 
         add_filter(
             'woocommerce_payment_gateways',
