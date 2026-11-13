@@ -12,6 +12,12 @@ use WP_REST_Response;
 
 final class WebhookRoute
 {
+    /** Aslan webhook bodies are well under 64KB; anything larger is rejected before HMAC work. */
+    public const MAX_BODY_BYTES = 65536;
+
+    /** 48h: longer than Aslan's retry budget (hours), short enough to keep the transient table bounded. */
+    public const IDEMPOTENCY_TTL_SECONDS = 172800;
+
     public function __construct(
         private readonly Config $config,
         private readonly WebhookService $service,
@@ -31,7 +37,11 @@ final class WebhookRoute
 
     public function handle(WP_REST_Request $request): WP_REST_Response
     {
-        $rawBody   = $request->get_body();
+        $rawBody = $request->get_body();
+        if (strlen($rawBody) > self::MAX_BODY_BYTES) {
+            // Stop before HMAC, JSON-decode, or any DB write.
+            return new WP_REST_Response(['error' => 'payload_too_large'], 413);
+        }
         $sigHeader = (string) $request->get_header('x_webhook_signature');
         $secret    = $this->config->activeWebhookSecret();
         if ($secret === '') {
@@ -57,7 +67,7 @@ final class WebhookRoute
                 if (get_transient($key) !== false) {
                     return false;
                 }
-                set_transient($key, 1, 7 * DAY_IN_SECONDS);
+                set_transient($key, 1, self::IDEMPOTENCY_TTL_SECONDS);
                 return true;
             },
         );
