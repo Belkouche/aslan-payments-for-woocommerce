@@ -355,23 +355,79 @@ final class WebhookServiceTest extends TestCase
         self::assertTrue(true);
     }
 
-    public function test_refund_is_skipped_while_a_pending_refund_attempt_exists(): void
+    /** @return object */
+    private function pendingMarker(string $key)
+    {
+        return new class ($key) {
+            public function __construct(private string $key)
+            {
+            }
+            /** @return array<string, string> */
+            public function get_data(): array
+            {
+                return ['key' => $this->key, 'value' => '1'];
+            }
+        };
+    }
+
+    private function wcRefundStub(): object
+    {
+        return new class {
+            public function update_meta_data(string $k, string $v): void
+            {
+            }
+            public function save(): void
+            {
+            }
+        };
+    }
+
+    public function test_refund_is_skipped_while_a_matching_pending_refund_attempt_exists(): void
     {
         Functions\expect('wc_create_refund')->never();
         $order = $this->aslanOrder();
         $order->method('get_meta')->willReturnCallback(
             static fn ($key = '') => $key === '_aslan_payment_id' ? 'pay_01HZ' : ''
         );
-        $meta = new class {
-            /** @return array<string, string> */
-            public function get_data(): array
-            {
-                return ['key' => '_aslan_pending_refund_abc', 'value' => '1'];
-            }
-        };
-        $order->method('get_meta_data')->willReturn([$meta]);
+        $order->method('get_meta_data')->willReturn(
+            [$this->pendingMarker('_aslan_pending_refund_pay_01HZ_20000_' . time())]
+        );
 
         (new WebhookService())->handle($this->refundEvent(), fn () => $order);
         self::assertTrue(true);
+    }
+
+    public function test_refund_ignores_mismatched_pending_marker(): void
+    {
+        Functions\expect('wc_create_refund')->once()->andReturn($this->wcRefundStub());
+        Functions\when('is_wp_error')->justReturn(false);
+        $order = $this->aslanOrder();
+        $order->method('get_meta')->willReturnCallback(
+            static fn ($key = '') => $key === '_aslan_payment_id' ? 'pay_01HZ' : ''
+        );
+        $order->method('get_meta_data')->willReturn(
+            [$this->pendingMarker('_aslan_pending_refund_pay_01HZ_5000_' . time())]
+        );
+        $order->method('get_refunds')->willReturn([]);
+
+        (new WebhookService())->handle($this->refundEvent(), fn () => $order);
+        self::assertTrue(true);
+    }
+
+    public function test_refund_sweeps_stale_pending_marker_and_processes(): void
+    {
+        Functions\expect('wc_create_refund')->once()->andReturn($this->wcRefundStub());
+        Functions\when('is_wp_error')->justReturn(false);
+        $staleKey = '_aslan_pending_refund_pay_01HZ_20000_' . (time() - 120);
+        $order    = $this->aslanOrder();
+        $order->method('get_meta')->willReturnCallback(
+            static fn ($key = '') => $key === '_aslan_payment_id' ? 'pay_01HZ' : ''
+        );
+        $order->method('get_meta_data')->willReturn([$this->pendingMarker($staleKey)]);
+        $order->method('get_refunds')->willReturn([]);
+        $order->expects(self::once())->method('delete_meta_data')->with($staleKey);
+        $order->expects(self::once())->method('save');
+
+        (new WebhookService())->handle($this->refundEvent(), fn () => $order);
     }
 }

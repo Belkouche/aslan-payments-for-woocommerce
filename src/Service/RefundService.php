@@ -42,7 +42,11 @@ final class RefundService
 
         // Pending marker before the API call: the webhook dedupe sees it while the
         // refund id is not yet known.
-        $order->update_meta_data(self::META_PENDING_PREFIX . $nonce, '1');
+        // Format: _aslan_pending_refund_{transactionId}_{centimes}_{unix_timestamp}
+        // The webhook handler matches on transactionId + centimes; the timestamp
+        // expires stale markers (API call crashed, server restart, etc.).
+        $markerKey = sprintf('%s%s_%d_%d', self::META_PENDING_PREFIX, $paymentId, $centimes, time());
+        $order->update_meta_data($markerKey, '1');
         $order->save();
 
         try {
@@ -56,13 +60,13 @@ final class RefundService
                 $idempotencyKey
             );
         } catch (\Throwable $e) {
-            $order->delete_meta_data(self::META_PENDING_PREFIX . $nonce);
+            $order->delete_meta_data($markerKey);
             $order->save();
             throw $e;
         }
 
-        // Pivot the marker from nonce to refund id.
-        $order->delete_meta_data(self::META_PENDING_PREFIX . $nonce);
+        // Pivot the marker from pending to refund id.
+        $order->delete_meta_data($markerKey);
         $order->update_meta_data(self::META_INITIATED_PREFIX . $refund->id, '1');
         $order->save();
 

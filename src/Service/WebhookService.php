@@ -8,6 +8,9 @@ final class WebhookService
 {
     public const MAX_AGE_SECONDS = 300;
 
+    /** A pending-refund marker older than this is orphaned (crashed attempt) and is swept. */
+    private const PENDING_MARKER_TTL_SECONDS = 60;
+
     /**
      * Verifies the X-Webhook-Signature header and returns the decoded event.
      * Throws if signature mismatch, stale timestamp, or malformed header.
@@ -199,14 +202,41 @@ final class WebhookService
             return;
         }
         // A refund attempt of ours is in flight (API call made, initiated marker not yet
-        // saved): the webhook raced ahead. Skip; Woo creates the record when it returns.
+        // saved): the webhook raced ahead. Match markers specifically by transactionId +
+        // centimes; sweep stale ones so an orphaned marker cannot block refunds forever.
+        $now            = time();
+        $matchedPending = false;
+        $sweptAny       = false;
         foreach ($order->get_meta_data() as $meta) {
             $key = is_object($meta) && method_exists($meta, 'get_data')
                 ? (string) ($meta->get_data()['key'] ?? '')
                 : '';
-            if (str_starts_with($key, RefundService::META_PENDING_PREFIX)) {
-                return;
+            if (! str_starts_with($key, RefundService::META_PENDING_PREFIX)) {
+                continue;
             }
+            // Key suffix: {transactionId}_{centimes}_{timestamp}; the transactionId may contain underscores.
+            $parts = explode('_', substr($key, strlen(RefundService::META_PENDING_PREFIX)));
+            if (count($parts) < 3) {
+                continue;
+            }
+            $markerTimestamp = (int) array_pop($parts);
+            $markerCentimes  = (int) array_pop($parts);
+            $markerTxn       = implode('_', $parts);
+
+            if ($now - $markerTimestamp > self::PENDING_MARKER_TTL_SECONDS) {
+                $order->delete_meta_data($key);
+                $sweptAny = true;
+                continue;
+            }
+            if ($markerTxn === $orderPaymentId && $markerCentimes === $amountCentimes) {
+                $matchedPending = true;
+            }
+        }
+        if ($sweptAny) {
+            $order->save();
+        }
+        if ($matchedPending) {
+            return;
         }
         foreach ($order->get_refunds() as $existing) {
             if ((string) $existing->get_meta('_aslan_refund_id') === $refundId) {
