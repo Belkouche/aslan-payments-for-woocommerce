@@ -58,6 +58,13 @@ final class Plugin
         (new Admin\SetupStatusCard($config))->register();
         (new Admin\TroubleshootingActions($config, $keyLifecycle))->register();
 
+        if (is_admin() && get_option('aslan_woo_scan_pending')) {
+            add_action('admin_init', static function (): void {
+                (new Admin\PriceScanner())->renderNoticeIfAny();
+                delete_option('aslan_woo_scan_pending');
+            });
+        }
+
         add_filter(
             'woocommerce_payment_gateways',
             static function (array $gateways) use ($config, $checkoutService, $refundService, $keyLifecycle): array {

@@ -40,6 +40,10 @@ if (! file_exists($composer_autoload)) {
 }
 require_once $composer_autoload;
 
+register_activation_hook(__FILE__, function (): void {
+    update_option('aslan_woo_scan_pending', 1);
+});
+
 add_action('plugins_loaded', [\Aslan\Woo\Plugin::class, 'boot']);
 
 // HPOS declaration must happen before WooCommerce init (before_woocommerce_init hook).
