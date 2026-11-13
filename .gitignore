@@ -1,0 +1,9 @@
+.superpowers/
+vendor/
+node_modules/
+.DS_Store
+*.log
+build/
+dist/
+.phpunit.cache/
+.phpunit.result.cache
