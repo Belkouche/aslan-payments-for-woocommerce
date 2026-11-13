@@ -26,7 +26,8 @@ final class Gateway extends WC_Payment_Gateway
         );
         $this->has_fields         = false;
         $this->supports           = ['products', 'refunds'];
-        $this->icon               = ASLAN_WOO_PLUGIN_URL . 'assets/logo.svg';
+        $logoPath                 = ASLAN_WOO_PLUGIN_DIR . 'assets/logo.svg';
+        $this->icon               = file_exists($logoPath) ? ASLAN_WOO_PLUGIN_URL . 'assets/logo.svg' : '';
 
         $this->init_form_fields();
         $this->init_settings();
@@ -35,7 +36,10 @@ final class Gateway extends WC_Payment_Gateway
             ? $this->config->title()
             : __('Pay by card, wallet, or cash agent', 'aslan-payments-for-woocommerce');
         $this->description = '';
-        $this->enabled     = $this->config->isConfigured() ? 'yes' : 'no';
+        // Note: we deliberately do NOT write $this->enabled here.
+        // Enabled is a merchant-controlled setting stored in woocommerce_aslan_settings;
+        // Phase 12 wires it up as a form_field checkbox. Checkout availability is
+        // gated by is_available() which reads our Config.
     }
 
     public function init_form_fields(): void
