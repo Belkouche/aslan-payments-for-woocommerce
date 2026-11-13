@@ -2781,6 +2781,12 @@ git commit -m "feat(status): register aslan-awaiting-cash order status"
 
 # Phase 9: Refund flow
 
+> **SDK reality check (learned during implementation, 2026-11-13):**
+> - **No `refund.succeeded` event exists.** The Aslan API emits `refund.created` and `refund.updated`, with the refund nested under `data.refund` carrying a `status` field (`pending` / `succeeded` / `failed`). The plan's original text said `refund.succeeded`; the implementation routes both event types to one handler that acts on `data.refund.status === 'succeeded'`.
+> - **SDK uses `transactionId`, not `paymentId`.** The Refund DTO and `Refunds::create` take `transactionId`. Internally we still store `_aslan_payment_id` on the order as our meta key (that's our naming, not the SDK's).
+> - **Woo creates its own refund record after `process_refund` returns successfully.** If the webhook also created one we'd get duplicates. RefundService writes an `_aslan_initiated_refund_{id}` meta for the webhook handler to dedupe against. See the race-condition fix in a follow-up commit.
+> - **Idempotency key uses attempt-level UUID**, not amount-level. Two refunds of 100 MAD on the same order are distinct operations; amount-level dedup would silently drop the second (financial-integrity bug surfaced in automated review).
+
 ### Task 9.1: `RefundService` + `process_refund` hook
 
 **Files:**
