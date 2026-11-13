@@ -58,7 +58,7 @@ class WC_Order
         return '';
     }
 
-    public function get_meta($key = '')
+    public function get_meta($key = '', $single = true)
     {
         return '';
     }
@@ -80,5 +80,10 @@ class WC_Order
     public function update_status($new_status, $note = '', $manual = false)
     {
         return true;
+    }
+
+    public function get_refunds()
+    {
+        return [];
     }
 }

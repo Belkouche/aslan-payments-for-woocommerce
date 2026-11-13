@@ -10,8 +10,11 @@ use Aslan\Woo\Client\AslanWooException;
 use Aslan\Woo\Config;
 use Aslan\Woo\Service\CheckoutService;
 use Aslan\Woo\Service\NonWholeMadException;
+use Aslan\Woo\Service\RefundNotPossibleException;
+use Aslan\Woo\Service\RefundService;
 use WC_Order;
 use WC_Payment_Gateway;
+use WP_Error;
 
 /**
  * Gateway — registered in Woo, surfaces on checkout, and process_payment
@@ -25,6 +28,7 @@ final class Gateway extends WC_Payment_Gateway
     public function __construct(
         private readonly Config $config,
         private readonly CheckoutService $checkoutService,
+        private readonly RefundService $refundService,
     ) {
         $this->id                 = self::ID;
         $this->method_title       = __('Aslan', 'aslan-payments-for-woocommerce');
@@ -143,5 +147,38 @@ final class Gateway extends WC_Payment_Gateway
             'result'   => 'success',
             'redirect' => $result->redirectUrl,
         ];
+    }
+
+    /**
+     * @param int         $order_id
+     * @param float|string|null $amount WooCommerce passes a decimal string (e.g. '100.00').
+     * @param string      $reason
+     * @return bool|WP_Error
+     */
+    public function process_refund($order_id, $amount = null, $reason = '')
+    {
+        $order = wc_get_order($order_id);
+        if (! $order instanceof WC_Order || $amount === null) {
+            return new WP_Error(
+                'invalid',
+                __('Refund failed: invalid order or amount.', 'aslan-payments-for-woocommerce')
+            );
+        }
+
+        try {
+            $refundId = $this->refundService->refund($order, (string) $amount, (string) $reason);
+        } catch (NonWholeMadException) {
+            return new WP_Error(
+                'whole_mad',
+                __('Refund amounts must be whole MAD.', 'aslan-payments-for-woocommerce')
+            );
+        } catch (RefundNotPossibleException $e) {
+            return new WP_Error('no_payment', $e->getMessage());
+        } catch (AslanWooException $e) {
+            return new WP_Error('aslan_error', $e->getMessage());
+        }
+
+        $order->add_order_note(sprintf('Aslan refund initiated (%s).', $refundId));
+        return true;
     }
 }

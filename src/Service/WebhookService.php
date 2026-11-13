@@ -83,6 +83,11 @@ final class WebhookService
         if (! is_array($data)) {
             return;
         }
+        // Refund events nest the refund under data.refund; payment events are flat.
+        $isRefundEvent = str_starts_with($eventType, 'refund.');
+        if ($isRefundEvent && isset($data['refund']) && is_array($data['refund'])) {
+            $data = $data['refund'];
+        }
         $wcOrderId = isset($data['metadata']['wc_order_id']) ? (int) $data['metadata']['wc_order_id'] : 0;
         if ($wcOrderId <= 0) {
             return;
@@ -106,7 +111,9 @@ final class WebhookService
             return;
         }
         $orderCentimes = (int) round((float) $order->get_total() * 100);
-        if ($eventAmountCentimes !== $orderCentimes) {
+        // Payment events must match the order total exactly. Refund events may be
+        // partial, so they are bounded (0 < amount <= total) in applyRefund() instead.
+        if (! $isRefundEvent && $eventAmountCentimes !== $orderCentimes) {
             return;
         }
 
@@ -151,13 +158,60 @@ final class WebhookService
                 );
                 break;
 
+            // `refund.succeeded` is the plan's name; the Aslan API emits refund.created and
+            // refund.updated carrying a status, so all three funnel into one handler.
             case 'refund.succeeded':
-                // Phase 9 implements.
+            case 'refund.created':
+            case 'refund.updated':
+                $this->applyRefund($order, $data, $eventAmountCentimes, $orderCentimes);
                 break;
 
             default:
                 // Ignore unknown events: Aslan may add new types before we support them.
                 break;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $data Flat refund object (id, transactionId, amount, status).
+     */
+    private function applyRefund(\WC_Order $order, array $data, int $amountCentimes, int $orderCentimes): void
+    {
+        $refundId = (string) ($data['id'] ?? '');
+        if ($refundId === '') {
+            return;
+        }
+        // Only a settled refund touches the order; pending/processing/failed are ignored.
+        // (refund.succeeded events from the plan's shape carry no status.)
+        if (isset($data['status']) && $data['status'] !== 'succeeded') {
+            return;
+        }
+        // Bind the refund to this order's own Aslan payment, not just its wc_order_id.
+        $orderPaymentId = (string) $order->get_meta(CheckoutService::META_PAYMENT_ID);
+        if ($orderPaymentId === '' || (string) ($data['transactionId'] ?? '') !== $orderPaymentId) {
+            return;
+        }
+        if ($amountCentimes <= 0 || $amountCentimes > $orderCentimes) {
+            return;
+        }
+        // Refunds started from Woo get their WC_Order_Refund from Woo itself.
+        if ((string) $order->get_meta(RefundService::META_INITIATED_PREFIX . $refundId) !== '') {
+            return;
+        }
+        foreach ($order->get_refunds() as $existing) {
+            if ((string) $existing->get_meta('_aslan_refund_id') === $refundId) {
+                return;
+            }
+        }
+
+        $refund = wc_create_refund([
+            'order_id' => $order->get_id(),
+            'amount'   => $amountCentimes / 100,
+            'reason'   => sprintf('Aslan refund %s', $refundId),
+        ]);
+        if (! is_wp_error($refund)) {
+            $refund->update_meta_data('_aslan_refund_id', $refundId);
+            $refund->save();
         }
     }
 }
