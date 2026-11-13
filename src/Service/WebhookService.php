@@ -10,6 +10,10 @@ final class WebhookService
 {
     public const MAX_AGE_SECONDS = 300;
 
+    public function __construct(private readonly ?DiagnosticLog $log = null)
+    {
+    }
+
     /** A pending-refund marker older than this is orphaned (crashed attempt) and is swept. */
     // 300s covers the worst case of AslanHttpClient's retry loop (connection failures
     // with 300ms + 900ms backoff × 3 attempts + typical API latency), plus headroom
@@ -103,13 +107,14 @@ final class WebhookService
         if ($wcOrderId > 0) {
             $order = $orderLoader($wcOrderId);
             if ($order === null) {
+                $this->log?->record(sprintf('event %s for order %d — not found', $eventId, $wcOrderId));
                 return;
             }
             $this->mutateOrder($eventType, $data, $order, $isRefundEvent);
             return;
         }
         if ($cptId > 0 && ! $isRefundEvent) {
-            $this->mutateCpt($eventType, $data, $cptId);
+            $this->mutateCpt($eventType, $data, $cptId, $eventId);
         }
     }
 
@@ -198,10 +203,11 @@ final class WebhookService
      *
      * @param array<string, mixed> $data
      */
-    private function mutateCpt(string $eventType, array $data, int $cptId): void
+    private function mutateCpt(string $eventType, array $data, int $cptId, string $eventId): void
     {
         $post = get_post($cptId);
         if (! $post instanceof \WP_Post || $post->post_type !== PaymentCpt::TYPE) {
+            $this->log?->record(sprintf('event %s for payment %d — not found', $eventId, $cptId));
             return;
         }
         // Same guards as the order path: currency and amount must match what we stored.

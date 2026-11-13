@@ -45,7 +45,7 @@ final class Plugin
             )
         );
 
-        (new Rest\WebhookRoute($config, new Service\WebhookService()))->register();
+        (new Rest\WebhookRoute($config, new Service\WebhookService(new Service\DiagnosticLog())))->register();
         (new WooCommerce\OrderStatus())->register();
         (new WooCommerce\ThankYouPage())->register();
         (new Rest\OrderStatusRoute())->register();
