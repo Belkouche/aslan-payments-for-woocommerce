@@ -151,12 +151,17 @@ Each phase ends with a commit. No partial work left between phases.
 
 - [ ] **Step 1: Write `composer.json`**
 
+> **Correction (2026-11-13):** `aslan/payment-php` is not published to Packagist. We add a VCS repository so Composer resolves it from GitHub. Source: the SDK's README §3 Installation documents this exact workaround.
+
 ```json
 {
   "name": "belkouche/aslan-payments-for-woocommerce",
   "description": "Accept Moroccan card, mobile wallet, and cash-agent payments through Aslan on WooCommerce.",
   "type": "wordpress-plugin",
   "license": "GPL-2.0-or-later",
+  "repositories": [
+    { "type": "vcs", "url": "https://github.com/Belkouche/aslan-payment-php-symfony" }
+  ],
   "require": {
     "php": "~8.2.35 || ~8.3.36 || ~8.4.27 || >=8.5.12",
     "aslan/payment-php": "^0.2.0"
@@ -193,15 +198,9 @@ Each phase ends with a commit. No partial work left between phases.
 }
 ```
 
-- [ ] **Step 2: Append to `.gitignore`**
+- [ ] **Step 2: Ensure `.gitignore` lists these entries (append only what's missing — don't duplicate lines already present).**
 
-```
-vendor/
-composer.lock
-# (we'll commit composer.lock before release in phase 15, not now)
-```
-
-Actually, do commit `composer.lock` — this is an application, not a library. Replace with:
+Required entries (commit `composer.lock` — this is an application, not a library):
 
 ```
 vendor/
@@ -211,6 +210,7 @@ node_modules/
 build/
 dist/
 *.log
+.DS_Store
 ```
 
 - [ ] **Step 3: Run `composer install`**
@@ -419,7 +419,15 @@ declare(strict_types=1);
 require_once __DIR__ . '/../vendor/autoload.php';
 ```
 
-- [ ] **Step 6: Run the lint/test/analyse chain and confirm empty-pass**
+- [ ] **Step 6: Add placeholder files so empty test directories don't warn**
+
+Create empty files:
+- `tests/Unit/.gitkeep`
+- `tests/Integration/.gitkeep`
+
+PHPUnit with `failOnWarning="true"` warns on a completely missing suite directory; `.gitkeep` makes the dirs exist without putting a test in them. They stay in place as the suites grow.
+
+- [ ] **Step 7: Run the lint/test/analyse chain and confirm empty-pass**
 
 Run: `vendor/bin/phpunit --testsuite unit`
 Expected: `No tests executed!` — passes.
@@ -428,12 +436,12 @@ Run: `vendor/bin/phpstan analyse src --level=8`
 Expected: `[OK] No errors`
 
 Run: `vendor/bin/phpcs`
-Expected: exit 0 (clean).
+Expected: exit 0 (clean). If the `WordPress` ruleset flags `declare(strict_types=1)` as a violation (this depends on the wpcs 3.x minor), add it to the ruleset's `<exclude>` list with a comment explaining why, then re-run.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add phpunit.xml.dist phpstan.neon.dist phpcs.xml.dist tests/bootstrap.php tests/phpstan-bootstrap.php
+git add phpunit.xml.dist phpstan.neon.dist phpcs.xml.dist tests/bootstrap.php tests/phpstan-bootstrap.php tests/Unit/.gitkeep tests/Integration/.gitkeep
 git commit -m "chore: phpunit, phpstan, phpcs configs"
 ```
 
@@ -457,7 +465,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        php: ['8.2.35', '8.3.36', '8.4.27']
+        php: ['8.2.35', '8.3.36', '8.4.27', '8.5.12']
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
