@@ -18,6 +18,26 @@ class WC_Order
         return '0';
     }
 
+    public function get_payment_method()
+    {
+        return '';
+    }
+
+    public function get_currency()
+    {
+        return '';
+    }
+
+    public function get_status()
+    {
+        return '';
+    }
+
+    public function is_paid()
+    {
+        return false;
+    }
+
     public function get_billing_email()
     {
         return '';

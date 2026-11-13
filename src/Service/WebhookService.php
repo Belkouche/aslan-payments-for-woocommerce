@@ -16,6 +16,11 @@ final class WebhookService
      */
     public function verify(string $rawBody, string $signatureHeader, string $secret): array
     {
+        if ($secret === '') {
+            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+            throw new WebhookVerificationException('Webhook secret not configured');
+        }
+
         $parts = [];
         foreach (explode(',', $signatureHeader) as $p) {
             $kv = explode('=', $p, 2);
@@ -31,10 +36,11 @@ final class WebhookService
             throw new WebhookVerificationException('Malformed signature header');
         }
 
-        $age = abs(time() - (int) $timestamp);
-        if ($age > self::MAX_AGE_SECONDS) {
+        $age = time() - (int) $timestamp;
+        // Allow up to 60s of forward clock skew; anything older than 300s is rejected.
+        if ($age < -60 || $age > self::MAX_AGE_SECONDS) {
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-            throw new WebhookVerificationException('Webhook timestamp too old');
+            throw new WebhookVerificationException('Webhook timestamp out of range');
         }
 
         $expected = hash_hmac('sha256', $timestamp . '.' . $rawBody, $secret);
@@ -47,6 +53,13 @@ final class WebhookService
         if (! is_array($event) || ! isset($event['id'], $event['event'])) {
             // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
             throw new WebhookVerificationException('Event body not well-formed');
+        }
+        if (
+            ! is_string($event['id']) || $event['id'] === ''
+            || ! is_string($event['event']) || $event['event'] === ''
+        ) {
+            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+            throw new WebhookVerificationException('Event body missing required fields');
         }
         return $event;
     }
@@ -65,7 +78,7 @@ final class WebhookService
             return;
         }
 
-        $eventType = (string) ($event['event'] ?? '');
+        $eventType = strtolower((string) ($event['event'] ?? ''));
         $data      = $event['data'] ?? [];
         if (! is_array($data)) {
             return;
@@ -79,18 +92,48 @@ final class WebhookService
             return;
         }
 
+        // Reject events for orders not using the Aslan gateway — a forged webhook
+        // with a wc_order_id metadata pointing at a non-Aslan order must not mutate it.
+        if ($order->get_payment_method() !== 'aslan') {
+            return;
+        }
+
+        // Validate amount + currency match the order. Guards against an attacker who
+        // somehow produced a valid-signature event for a mismatched amount.
+        $eventAmountCentimes = isset($data['amount']) ? (int) $data['amount'] : 0;
+        $eventCurrency       = isset($data['currency']) ? (string) $data['currency'] : '';
+        if ($eventCurrency !== 'MAD') {
+            return;
+        }
+        $orderCentimes = (int) round((float) $order->get_total() * 100);
+        if ($eventAmountCentimes !== $orderCentimes) {
+            return;
+        }
+
         switch ($eventType) {
             case 'payment.succeeded':
+                // Idempotency belt-and-suspenders: if the order is already paid,
+                // skip to avoid re-running completion hooks.
+                if ($order->is_paid()) {
+                    break;
+                }
                 $paymentId = (string) ($data['id'] ?? '');
-                $order->update_meta_data('_aslan_payment_id', $paymentId);
+                if ($paymentId === '') {
+                    return;
+                }
+                $order->update_meta_data(CheckoutService::META_PAYMENT_ID, $paymentId);
                 if (isset($data['cardLast4'])) {
                     $order->update_meta_data('_aslan_card_last4', (string) $data['cardLast4']);
                 }
-                $order->save();
+                // payment_complete() itself persists — no explicit save() needed
                 $order->payment_complete($paymentId);
                 break;
 
             case 'payment.failed':
+                // Order-state regression guard: don't flip a paid/completed order to failed.
+                if ($order->is_paid() || ! in_array($order->get_status(), ['pending', 'on-hold'], true)) {
+                    break;
+                }
                 $reason = (string) ($data['failureReason'] ?? 'unknown');
                 $order->update_status(
                     'failed',
@@ -99,6 +142,9 @@ final class WebhookService
                 break;
 
             case 'payment.pending_cash':
+                if ($order->is_paid() || ! in_array($order->get_status(), ['pending', 'on-hold'], true)) {
+                    break;
+                }
                 $order->update_status(
                     'aslan-awaiting-cash',
                     'Aslan reported cash payment pending at the agent network'

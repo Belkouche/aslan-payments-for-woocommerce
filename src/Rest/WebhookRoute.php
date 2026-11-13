@@ -35,7 +35,9 @@ final class WebhookRoute
         $sigHeader = (string) $request->get_header('x_webhook_signature');
         $secret    = $this->config->activeWebhookSecret();
         if ($secret === '') {
-            return new WP_REST_Response(['error' => 'not_configured'], 401);
+            $resp = new WP_REST_Response(['error' => 'not_configured'], 503);
+            $resp->header('Retry-After', '3600');
+            return $resp;
         }
 
         try {
