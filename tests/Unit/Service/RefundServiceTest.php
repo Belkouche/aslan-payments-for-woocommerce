@@ -25,7 +25,7 @@ final class RefundServiceTest extends TestCase
             }
         );
         $order->expects(self::once())->method('delete_meta_data')
-            ->with(self::matchesRegularExpression('/^_aslan_pending_refund_pay_01HZ_10000_\d+$/'));
+            ->with(self::matchesRegularExpression('/^_aslan_pending_refund_pay_01HZ_10000_\d+_[0-9a-f-]+$/'));
 
         $client = $this->createMock(AslanHttpClient::class);
         $client->expects(self::once())
@@ -52,7 +52,7 @@ final class RefundServiceTest extends TestCase
 
         self::assertSame('rf_01HZ', $refundId);
         self::assertCount(2, $metaWrites);
-        self::assertMatchesRegularExpression('/^_aslan_pending_refund_pay_01HZ_10000_\d+$/', $metaWrites[0]);
+        self::assertMatchesRegularExpression('/^_aslan_pending_refund_pay_01HZ_10000_\d+_[0-9a-f-]+$/', $metaWrites[0]);
         self::assertSame('_aslan_initiated_refund_rf_01HZ', $metaWrites[1]);
     }
 

@@ -390,7 +390,7 @@ final class WebhookServiceTest extends TestCase
             static fn ($key = '') => $key === '_aslan_payment_id' ? 'pay_01HZ' : ''
         );
         $order->method('get_meta_data')->willReturn(
-            [$this->pendingMarker('_aslan_pending_refund_pay_01HZ_20000_' . time())]
+            [$this->pendingMarker('_aslan_pending_refund_pay_01HZ_20000_' . time() . '_nonceA')]
         );
 
         (new WebhookService())->handle($this->refundEvent(), fn () => $order);
@@ -406,7 +406,7 @@ final class WebhookServiceTest extends TestCase
             static fn ($key = '') => $key === '_aslan_payment_id' ? 'pay_01HZ' : ''
         );
         $order->method('get_meta_data')->willReturn(
-            [$this->pendingMarker('_aslan_pending_refund_pay_01HZ_5000_' . time())]
+            [$this->pendingMarker('_aslan_pending_refund_pay_01HZ_5000_' . time() . '_nonceA')]
         );
         $order->method('get_refunds')->willReturn([]);
 
@@ -418,7 +418,7 @@ final class WebhookServiceTest extends TestCase
     {
         Functions\expect('wc_create_refund')->once()->andReturn($this->wcRefundStub());
         Functions\when('is_wp_error')->justReturn(false);
-        $staleKey = '_aslan_pending_refund_pay_01HZ_20000_' . (time() - 120);
+        $staleKey = '_aslan_pending_refund_pay_01HZ_20000_' . (time() - 400) . '_nonceA';
         $order    = $this->aslanOrder();
         $order->method('get_meta')->willReturnCallback(
             static fn ($key = '') => $key === '_aslan_payment_id' ? 'pay_01HZ' : ''
@@ -427,6 +427,29 @@ final class WebhookServiceTest extends TestCase
         $order->method('get_refunds')->willReturn([]);
         $order->expects(self::once())->method('delete_meta_data')->with($staleKey);
         $order->expects(self::once())->method('save');
+
+        (new WebhookService())->handle($this->refundEvent(), fn () => $order);
+    }
+
+    public function test_two_concurrent_pending_markers_dont_collide(): void
+    {
+        // Same paymentId + amount + second, distinct nonces: both markers survive when
+        // the webhook matches one of them (neither is swept, still within TTL).
+        Functions\expect('wc_create_refund')->never();
+        $t       = time();
+        $markerA = '_aslan_pending_refund_pay_01HZ_20000_' . $t . '_nonceA';
+        $markerB = '_aslan_pending_refund_pay_01HZ_20000_' . $t . '_nonceB';
+        self::assertNotSame($markerA, $markerB);
+
+        $order = $this->aslanOrder();
+        $order->method('get_meta')->willReturnCallback(
+            static fn ($key = '') => $key === '_aslan_payment_id' ? 'pay_01HZ' : ''
+        );
+        $order->method('get_meta_data')->willReturn(
+            [$this->pendingMarker($markerA), $this->pendingMarker($markerB)]
+        );
+        $order->expects(self::never())->method('delete_meta_data');
+        $order->expects(self::never())->method('save');
 
         (new WebhookService())->handle($this->refundEvent(), fn () => $order);
     }

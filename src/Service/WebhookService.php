@@ -9,7 +9,10 @@ final class WebhookService
     public const MAX_AGE_SECONDS = 300;
 
     /** A pending-refund marker older than this is orphaned (crashed attempt) and is swept. */
-    private const PENDING_MARKER_TTL_SECONDS = 60;
+    // 300s covers the worst case of AslanHttpClient's retry loop (connection failures
+    // with 300ms + 900ms backoff × 3 attempts + typical API latency), plus headroom
+    // for unusual network conditions. See docs/superpowers/plans/... for the rationale.
+    private const PENDING_MARKER_TTL_SECONDS = 300;
 
     /**
      * Verifies the X-Webhook-Signature header and returns the decoded event.
@@ -214,14 +217,16 @@ final class WebhookService
             if (! str_starts_with($key, RefundService::META_PENDING_PREFIX)) {
                 continue;
             }
-            // Key suffix: {transactionId}_{centimes}_{timestamp}; the transactionId may contain underscores.
             $parts = explode('_', substr($key, strlen(RefundService::META_PENDING_PREFIX)));
-            if (count($parts) < 3) {
+            if (count($parts) < 4) {
                 continue;
             }
-            $markerTimestamp = (int) array_pop($parts);
-            $markerCentimes  = (int) array_pop($parts);
-            $markerTxn       = implode('_', $parts);
+            // Suffix format: {paymentId}_{centimes}_{timestamp}_{nonce}
+            // paymentId may contain underscores; parse from the right.
+            array_pop($parts);                          // nonce — discarded for matching
+            $markerTimestamp = (int) array_pop($parts); // timestamp
+            $markerCentimes  = (int) array_pop($parts); // centimes
+            $markerTxn       = implode('_', $parts);    // remainder = paymentId
 
             if ($now - $markerTimestamp > self::PENDING_MARKER_TTL_SECONDS) {
                 $order->delete_meta_data($key);

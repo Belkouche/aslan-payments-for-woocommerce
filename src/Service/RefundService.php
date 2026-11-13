@@ -45,7 +45,14 @@ final class RefundService
         // Format: _aslan_pending_refund_{transactionId}_{centimes}_{unix_timestamp}
         // The webhook handler matches on transactionId + centimes; the timestamp
         // expires stale markers (API call crashed, server restart, etc.).
-        $markerKey = sprintf('%s%s_%d_%d', self::META_PENDING_PREFIX, $paymentId, $centimes, time());
+        $markerKey = sprintf(
+            '%s%s_%d_%d_%s',
+            self::META_PENDING_PREFIX,
+            $paymentId,
+            $centimes,
+            time(),
+            $nonce
+        );
         $order->update_meta_data($markerKey, '1');
         $order->save();
 
