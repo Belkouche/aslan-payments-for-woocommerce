@@ -23,6 +23,43 @@ final class AslanHttpClient
 {
     private ?Aslan $sdk = null;
 
+    /** @var array<int, int> milliseconds to sleep between attempts */
+    private array $backoff = [300, 900];
+
+    /** @param array<int, int> $backoff */
+    public function setBackoffSchedule(array $backoff): void
+    {
+        $this->backoff = $backoff;
+    }
+
+    /**
+     * Retry only connection failures (no HTTP response); everything else is mapped and thrown.
+     *
+     * @template T
+     * @param Closure(): T $op
+     * @return T
+     */
+    private function withConnectionRetry(Closure $op): mixed
+    {
+        $attempts = 0;
+        $maxAttempts = count($this->backoff) + 1;
+        while (true) {
+            try {
+                return $op();
+            } catch (AslanException $e) {
+                $isConnectionFailure = $e->errorCode === 'NETWORK_ERROR' || $e->httpStatus === 0;
+                $attempts++;
+                if (! $isConnectionFailure || $attempts >= $maxAttempts) {
+                    throw $this->map($e); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+                }
+                $sleep = $this->backoff[$attempts - 1] ?? 0;
+                if ($sleep > 0) {
+                    usleep($sleep * 1000);
+                }
+            }
+        }
+    }
+
     /** @param Closure(): Aslan $sdkFactory */
     public function __construct(private readonly Closure $sdkFactory)
     {
@@ -41,20 +78,16 @@ final class AslanHttpClient
      */
     public function createCheckoutSession(array $params, ?string $idempotencyKey = null): CheckoutSession
     {
-        try {
-            return $this->sdk()->checkoutSessions->create($params, $idempotencyKey);
-        } catch (AslanException $e) {
-            throw $this->map($e); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-        }
+        return $this->withConnectionRetry(
+            fn () => $this->sdk()->checkoutSessions->create($params, $idempotencyKey)
+        );
     }
 
     public function retrieveCheckoutSession(string $id): CheckoutSession
     {
-        try {
-            return $this->sdk()->checkoutSessions->retrieve($id);
-        } catch (AslanException $e) {
-            throw $this->map($e); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-        }
+        return $this->withConnectionRetry(
+            fn () => $this->sdk()->checkoutSessions->retrieve($id)
+        );
     }
 
     /**
@@ -62,20 +95,16 @@ final class AslanHttpClient
      */
     public function upsertWebhookConfig(array $params, ?string $idempotencyKey = null): WebhookConfig
     {
-        try {
-            return $this->sdk()->webhooksConfig->create($params, $idempotencyKey);
-        } catch (AslanException $e) {
-            throw $this->map($e); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-        }
+        return $this->withConnectionRetry(
+            fn () => $this->sdk()->webhooksConfig->create($params, $idempotencyKey)
+        );
     }
 
     public function retrieveWebhookConfig(): WebhookConfig
     {
-        try {
-            return $this->sdk()->webhooksConfig->retrieve();
-        } catch (AslanException $e) {
-            throw $this->map($e); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-        }
+        return $this->withConnectionRetry(
+            fn () => $this->sdk()->webhooksConfig->retrieve()
+        );
     }
 
     /**
@@ -83,11 +112,9 @@ final class AslanHttpClient
      */
     public function createRefund(array $params, ?string $idempotencyKey = null): Refund
     {
-        try {
-            return $this->sdk()->refunds->create($params, $idempotencyKey);
-        } catch (AslanException $e) {
-            throw $this->map($e); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-        }
+        return $this->withConnectionRetry(
+            fn () => $this->sdk()->refunds->create($params, $idempotencyKey)
+        );
     }
 
     /**
@@ -99,11 +126,9 @@ final class AslanHttpClient
      */
     public function pingApiKeys(): array
     {
-        try {
-            return array_values($this->sdk()->apiKeys->list()->data);
-        } catch (AslanException $e) {
-            throw $this->map($e); // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
-        }
+        return $this->withConnectionRetry(
+            fn () => array_values($this->sdk()->apiKeys->list()->data)
+        );
     }
 
     private function map(AslanException $e): AslanWooException

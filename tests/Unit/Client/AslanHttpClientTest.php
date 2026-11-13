@@ -78,6 +78,39 @@ final class AslanHttpClientTest extends TestCase
         $this->clientFor($fakeHttp)->createCheckoutSession(['amount' => 1]);
     }
 
+    public function test_connection_error_retries_twice_then_succeeds(): void
+    {
+        $fakeHttp = $this->createMock(HttpClientInterface::class);
+        $fakeHttp->expects(self::exactly(3))
+            ->method('request')
+            ->willReturnOnConsecutiveCalls(
+                self::throwException(AslanException::networkError('ECONNRESET')),
+                self::throwException(AslanException::networkError('ECONNRESET')),
+                self::sessionPayload('cs_test'),
+            );
+
+        $client = $this->clientFor($fakeHttp);
+        // Zero-delay backoff for tests
+        $client->setBackoffSchedule([0, 0]);
+
+        $result = $client->createCheckoutSession(['amount' => 1]);
+        self::assertSame('cs_test', $result->id);
+    }
+
+    public function test_connection_error_after_3_attempts_throws_transient(): void
+    {
+        $fakeHttp = $this->createMock(HttpClientInterface::class);
+        $fakeHttp->expects(self::exactly(3))
+            ->method('request')
+            ->willThrowException(AslanException::networkError('ECONNRESET'));
+
+        $client = $this->clientFor($fakeHttp);
+        $client->setBackoffSchedule([0, 0]);
+
+        $this->expectException(AslanTransientException::class);
+        $client->createCheckoutSession(['amount' => 1]);
+    }
+
     private function clientFor(MockObject&HttpClientInterface $fakeHttp): AslanHttpClient
     {
         return new AslanHttpClient(
