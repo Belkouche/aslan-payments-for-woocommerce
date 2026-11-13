@@ -20,7 +20,8 @@
     "brain/monkey": "^2.6",
     "php-stubs/wordpress-stubs": "^7.1",
     "php-stubs/woocommerce-stubs": "^11.3",
-    "wp-phpunit/wp-phpunit": "^7.1"
+    "wp-phpunit/wp-phpunit": "^7.1",
+    "vimeo/psalm": "^7.3"
   },
   "autoload": {
     "psr-4": {

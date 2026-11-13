@@ -1,0 +1,35 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'  # weekly Monday 06:00 UTC
+
+jobs:
+  taint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: '8.3', coverage: none }
+      - run: composer install --no-interaction --prefer-dist
+      - run: vendor/bin/psalm --taint-analysis
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: trufflesecurity/trufflehog@main
+        with: { path: ./, extra_args: --only-verified }
+
+  composer-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: '8.3', coverage: none }
+      - run: composer install --no-interaction --prefer-dist
+      - run: composer audit --locked
