@@ -10,5 +10,3 @@ parameters:
     - vendor/php-stubs/woocommerce-stubs
   bootstrapFiles:
     - tests/phpstan-bootstrap.php
-  parallel:
-    maximumNumberOfProcesses: 1

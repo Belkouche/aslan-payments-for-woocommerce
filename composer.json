@@ -34,7 +34,7 @@
   "scripts": {
     "test": "phpunit",
     "lint": "phpcs",
-    "analyse": "phpstan analyse src --level=8"
+    "analyse": "phpstan analyse --memory-limit=1G"
   },
   "config": {
     "allow-plugins": {

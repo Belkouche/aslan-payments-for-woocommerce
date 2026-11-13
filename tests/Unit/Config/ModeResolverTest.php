@@ -106,4 +106,47 @@ final class ModeResolverTest extends TestCase
 
         self::assertFalse($config->isConfigured());
     }
+
+    public function test_mode_is_test_when_option_is_uppercase_LIVE(): void
+    {
+        Functions\when('get_option')->alias(function (string $name, $default = false) {
+            return $name === 'aslan_woo_mode' ? 'LIVE' : $default;
+        });
+
+        $config = new Config();
+
+        // Case-sensitive match is intentional — only exact "live" flips the mode.
+        self::assertSame('test', $config->mode());
+    }
+
+    public function test_active_secret_key_returns_empty_string_when_option_is_array(): void
+    {
+        Functions\when('get_option')->alias(function (string $name, $default = false) {
+            return match ($name) {
+                'aslan_woo_mode' => 'test',
+                'aslan_woo_test_secret_key' => ['corrupted' => 'array'],
+                default => $default,
+            };
+        });
+
+        $config = new Config();
+
+        self::assertSame('', $config->activeSecretKey());
+    }
+
+    public function test_is_configured_true_when_live_key_and_secret_present(): void
+    {
+        Functions\when('get_option')->alias(function (string $name, $default = false) {
+            return match ($name) {
+                'aslan_woo_mode' => 'live',
+                'aslan_woo_live_secret_key' => 'sk_live_xyz_secret',
+                'aslan_woo_live_webhook_secret' => 'whsec_live_xyz',
+                default => $default,
+            };
+        });
+
+        $config = new Config();
+
+        self::assertTrue($config->isConfigured());
+    }
 }

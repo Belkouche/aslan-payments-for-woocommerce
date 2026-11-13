@@ -33,15 +33,13 @@ final class Config
     public function activeSecretKey(): string
     {
         $opt = $this->mode() === self::MODE_LIVE ? self::OPT_LIVE_KEY : self::OPT_TEST_KEY;
-        $v = get_option($opt, '');
-        return is_string($v) ? $v : '';
+        return $this->stringOption($opt);
     }
 
     public function activeWebhookSecret(): string
     {
         $opt = $this->mode() === self::MODE_LIVE ? self::OPT_LIVE_WEBHOOK_SECRET : self::OPT_TEST_WEBHOOK_SECRET;
-        $v = get_option($opt, '');
-        return is_string($v) ? $v : '';
+        return $this->stringOption($opt);
     }
 
     public function isConfigured(): bool
@@ -51,18 +49,32 @@ final class Config
 
     public function testBannerEnabled(): bool
     {
-        return (bool) get_option(self::OPT_SHOW_TEST_BANNER, true);
+        $v = get_option(self::OPT_SHOW_TEST_BANNER, true);
+        // Canonical shape: bool. Tolerate WooCommerce's legacy 'yes'/'no'/'1'/'0' strings
+        // (merchants migrating from another gateway may have those stored). All future
+        // writes (see Phase 12 persist_bridged_options) MUST write a bool.
+        if (is_bool($v)) {
+            return $v;
+        }
+        if (is_string($v)) {
+            return $v === 'yes' || $v === '1';
+        }
+        return (bool) $v;
     }
 
     public function title(): string
     {
-        $v = get_option(self::OPT_TITLE, '');
-        return is_string($v) ? $v : '';
+        return $this->stringOption(self::OPT_TITLE);
     }
 
     public function webhookUrlOverride(): string
     {
-        $v = get_option(self::OPT_WEBHOOK_URL_OVERRIDE, '');
+        return $this->stringOption(self::OPT_WEBHOOK_URL_OVERRIDE);
+    }
+
+    private function stringOption(string $name): string
+    {
+        $v = get_option($name, '');
         return is_string($v) ? $v : '';
     }
 }
