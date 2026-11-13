@@ -28,6 +28,11 @@ class WC_Order
         return '';
     }
 
+    public function get_order_key()
+    {
+        return '';
+    }
+
     public function get_status()
     {
         return '';

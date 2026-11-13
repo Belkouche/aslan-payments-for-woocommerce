@@ -33,7 +33,10 @@ final class ThankYouPage
         }
 
         $nonce = (string) wp_create_nonce('wp_rest');
-        $url   = (string) rest_url('aslan/v1/order-status/' . $orderId);
+        $url   = (string) add_query_arg(
+            ['key' => (string) $order->get_order_key()],
+            rest_url('aslan/v1/order-status/' . $orderId)
+        );
 
         echo '<div id="aslan-await" data-url="' . esc_attr($url) . '"';
         echo ' data-nonce="' . esc_attr($nonce) . '">';
