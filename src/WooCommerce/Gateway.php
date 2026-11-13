@@ -48,16 +48,95 @@ final class Gateway extends WC_Payment_Gateway
             ? $this->config->title()
             : __('Pay by card, wallet, or cash agent', 'aslan-payments-for-woocommerce');
         $this->description = '';
-        // Note: we deliberately do NOT write $this->enabled here.
-        // Enabled is a merchant-controlled setting stored in woocommerce_aslan_settings;
-        // Phase 12 wires it up as a form_field checkbox. Checkout availability is
-        // gated by is_available() which reads our Config.
+        // Note: we deliberately do NOT write $this->enabled here, and there is no
+        // `enabled` form field. Checkout availability is gated by is_available(),
+        // which reads our Config.
+
+        add_action('woocommerce_update_options_payment_gateways_' . self::ID, [$this, 'persist_bridged_options']);
     }
 
     public function init_form_fields(): void
     {
-        // Phase 12 fills this in. Minimal skeleton only.
-        $this->form_fields = [];
+        $this->form_fields = [
+            'mode' => [
+                'title'   => __('Mode', 'aslan-payments-for-woocommerce'),
+                'type'    => 'select',
+                'default' => 'test',
+                'options' => [
+                    'test' => __('Test — no real money moves', 'aslan-payments-for-woocommerce'),
+                    'live' => __('Live — real payments', 'aslan-payments-for-woocommerce'),
+                ],
+            ],
+            'test_secret_key' => [
+                'title'       => __('Test secret key', 'aslan-payments-for-woocommerce'),
+                'type'        => 'password',
+                'description' => __(
+                    'Starts with sk_test_. From your Aslan dashboard → Developers → API keys.',
+                    'aslan-payments-for-woocommerce'
+                ),
+                'desc_tip'    => true,
+            ],
+            'live_secret_key' => [
+                'title'       => __('Live secret key', 'aslan-payments-for-woocommerce'),
+                'type'        => 'password',
+                'description' => __(
+                    'Starts with sk_live_. From your Aslan dashboard → Developers → API keys.',
+                    'aslan-payments-for-woocommerce'
+                ),
+                'desc_tip'    => true,
+            ],
+            'title' => [
+                'title'   => __('Title shown to customers', 'aslan-payments-for-woocommerce'),
+                'type'    => 'text',
+                'default' => __('Pay by card, wallet, or cash agent', 'aslan-payments-for-woocommerce'),
+            ],
+            'show_test_banner' => [
+                'title'   => __('Checkout display', 'aslan-payments-for-woocommerce'),
+                'label'   => __(
+                    'Show "Test Mode" banner on checkout when in test mode',
+                    'aslan-payments-for-woocommerce'
+                ),
+                'type'    => 'checkbox',
+                'default' => 'yes',
+            ],
+            'webhook_url_override' => [
+                'title'       => __('Webhook URL override', 'aslan-payments-for-woocommerce'),
+                'type'        => 'text',
+                'default'     => '',
+                'description' => __(
+                    // phpcs:ignore Generic.Files.LineLength.TooLong -- i18n requires a single string literal.
+                    'Advanced. Leave empty unless your WordPress public URL differs from where Aslan should POST (e.g. behind a tunnel). If filled, this exact URL is registered with Aslan.',
+                    'aslan-payments-for-woocommerce'
+                ),
+                'desc_tip'    => true,
+            ],
+        ];
+    }
+
+    /**
+     * Mirrors the settings blob WooCommerce just saved into our canonical
+     * aslan_woo_* options.
+     */
+    public function persist_bridged_options(): void
+    {
+        $settings = get_option('woocommerce_' . self::ID . '_settings', []);
+        if (! is_array($settings)) {
+            $settings = [];
+        }
+
+        update_option(Config::OPT_MODE, $this->setting($settings, 'mode', 'test'));
+        update_option(Config::OPT_TEST_KEY, $this->setting($settings, 'test_secret_key'));
+        update_option(Config::OPT_LIVE_KEY, $this->setting($settings, 'live_secret_key'));
+        update_option(Config::OPT_TITLE, $this->setting($settings, 'title'));
+        update_option(Config::OPT_SHOW_TEST_BANNER, $this->setting($settings, 'show_test_banner', 'yes') === 'yes');
+        update_option(Config::OPT_WEBHOOK_URL_OVERRIDE, $this->setting($settings, 'webhook_url_override'));
+    }
+
+    /** @param array<mixed> $settings */
+    private function setting(array $settings, string $name, string $default = ''): string
+    {
+        $v = $settings[$name] ?? $default;
+        return is_string($v) ? $v : $default;
     }
 
     public function is_available(): bool
