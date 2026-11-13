@@ -1,4 +1,8 @@
 <?php
+
+// phpcs:disable PSR1.Files.SideEffects.FoundWithSymbols -- WP entry file must define constants and register hooks.
+// phpcs:disable Generic.Files.LineLength.TooLong -- plugin header Description and a translatable string must stay on one line.
+
 /**
  * Plugin Name:       Aslan Payments for WooCommerce
  * Plugin URI:        https://aslanpay.ma/wordpress
