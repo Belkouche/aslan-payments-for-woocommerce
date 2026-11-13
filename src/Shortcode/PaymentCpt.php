@@ -13,7 +13,10 @@ final class PaymentCpt
     public const STATUS_FAILED       = 'failed';
     public const STATUS_PENDING_CASH = 'pending_cash';
 
-    public const META_PAYMENT_ID = 'aslan_payment_ref';
+    // Underscore prefix: WP treats these as protected meta (not editable via REST or the admin UI).
+    public const META_PAYMENT_ID = '_aslan_payment_ref';
+    public const META_AMOUNT     = '_aslan_amount';
+    public const META_STATUS     = '_aslan_status';
 
     public function register(): void
     {
@@ -24,7 +27,7 @@ final class PaymentCpt
                 'show_in_rest'        => false,
                 'exclude_from_search' => true,
                 'publicly_queryable'  => false,
-                'supports'            => ['title', 'custom-fields'],
+                'supports'            => ['title'],
             ]);
         });
     }

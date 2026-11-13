@@ -208,13 +208,13 @@ final class WebhookService
         if ((string) ($data['currency'] ?? '') !== 'MAD') {
             return;
         }
-        $storedCentimes = (int) get_post_meta($cptId, 'amount', true);
+        $storedCentimes = (int) get_post_meta($cptId, PaymentCpt::META_AMOUNT, true);
         $eventCentimes  = isset($data['amount']) ? (int) $data['amount'] : 0;
         if ($storedCentimes <= 0 || $eventCentimes !== $storedCentimes) {
             return;
         }
 
-        $current = (string) get_post_meta($cptId, 'status', true);
+        $current = (string) get_post_meta($cptId, PaymentCpt::META_STATUS, true);
         $open    = in_array($current, [PaymentCpt::STATUS_PENDING, PaymentCpt::STATUS_PENDING_CASH], true);
 
         switch ($eventType) {
@@ -228,18 +228,18 @@ final class WebhookService
                     return;
                 }
                 update_post_meta($cptId, PaymentCpt::META_PAYMENT_ID, $paymentId);
-                update_post_meta($cptId, 'status', PaymentCpt::STATUS_SUCCEEDED);
+                update_post_meta($cptId, PaymentCpt::META_STATUS, PaymentCpt::STATUS_SUCCEEDED);
                 break;
 
             case 'payment.failed':
                 if ($open) {
-                    update_post_meta($cptId, 'status', PaymentCpt::STATUS_FAILED);
+                    update_post_meta($cptId, PaymentCpt::META_STATUS, PaymentCpt::STATUS_FAILED);
                 }
                 break;
 
             case 'payment.pending_cash':
                 if ($current === PaymentCpt::STATUS_PENDING) {
-                    update_post_meta($cptId, 'status', PaymentCpt::STATUS_PENDING_CASH);
+                    update_post_meta($cptId, PaymentCpt::META_STATUS, PaymentCpt::STATUS_PENDING_CASH);
                 }
                 break;
 

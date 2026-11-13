@@ -490,11 +490,11 @@ final class WebhookServiceTest extends TestCase
         $written = $this->runCptEvent(
             'payment.succeeded',
             ['id' => 'pay_9', 'amount' => 50000, 'currency' => 'MAD'],
-            ['amount' => '50000', 'status' => 'pending']
+            ['_aslan_amount' => '50000', '_aslan_status' => 'pending']
         );
 
-        self::assertSame('succeeded', $written['status']);
-        self::assertSame('pay_9', $written['aslan_payment_ref']);
+        self::assertSame('succeeded', $written['_aslan_status']);
+        self::assertSame('pay_9', $written['_aslan_payment_ref']);
     }
 
     public function test_cpt_amount_mismatch_is_ignored(): void
@@ -502,7 +502,7 @@ final class WebhookServiceTest extends TestCase
         $written = $this->runCptEvent(
             'payment.succeeded',
             ['id' => 'pay_9', 'amount' => 100, 'currency' => 'MAD'],
-            ['amount' => '50000', 'status' => 'pending']
+            ['_aslan_amount' => '50000', '_aslan_status' => 'pending']
         );
 
         self::assertSame([], $written);
@@ -513,7 +513,7 @@ final class WebhookServiceTest extends TestCase
         $written = $this->runCptEvent(
             'payment.succeeded',
             ['id' => 'pay_9', 'amount' => 50000, 'currency' => 'MAD'],
-            ['amount' => '50000', 'status' => 'pending'],
+            ['_aslan_amount' => '50000', '_aslan_status' => 'pending'],
             'post'
         );
 
@@ -525,7 +525,7 @@ final class WebhookServiceTest extends TestCase
         $written = $this->runCptEvent(
             'payment.failed',
             ['id' => 'pay_9', 'amount' => 50000, 'currency' => 'MAD'],
-            ['amount' => '50000', 'status' => 'succeeded']
+            ['_aslan_amount' => '50000', '_aslan_status' => 'succeeded']
         );
 
         self::assertSame([], $written);

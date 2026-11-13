@@ -33,12 +33,26 @@ final class ShortcodePayRoute
 
     public function handle(WP_REST_Request $request): WP_REST_Response
     {
-        $amount      = (int) $request->get_param('amount');
-        $description = sanitize_text_field((string) $request->get_param('description'));
-        $reference   = sanitize_text_field((string) $request->get_param('reference'));
-        // Redirect targets must stay on this site; anything else falls back to the default.
-        $successUrl = $this->localUrl((string) $request->get_param('success_url'), home_url('/aslan/thank-you'));
-        $cancelUrl  = $this->localUrl((string) $request->get_param('cancel_url'), home_url());
+        $token = (string) $request->get_param('token');
+        if ($token === '' || ! preg_match('/^[a-f0-9-]{36}$/i', $token)) {
+            return new WP_REST_Response(['error' => 'invalid_token'], 400);
+        }
+
+        $stash = get_transient('aslan_pay_' . $token);
+        if (! is_array($stash)) {
+            // Not found, expired, or already consumed.
+            return new WP_REST_Response(['error' => 'token_expired'], 400);
+        }
+
+        // Single-use: delete immediately so the token cannot be replayed.
+        delete_transient('aslan_pay_' . $token);
+
+        // Attributes come from the server-side stash only, never from the request body.
+        $amount      = (int) ($stash['amount'] ?? 0);
+        $description = (string) ($stash['description'] ?? '');
+        $successUrl  = (string) ($stash['success_url'] ?? home_url('/aslan/thank-you'));
+        $cancelUrl   = (string) ($stash['cancel_url'] ?? home_url());
+        $reference   = (string) ($stash['reference'] ?? '');
 
         try {
             AmountValidator::assertWholeMadCentimes($amount);
@@ -51,12 +65,12 @@ final class ShortcodePayRoute
             'post_status' => 'publish',
             'post_title'  => $description !== '' ? $description : sprintf('Aslan payment %d centimes', $amount),
             'meta_input'  => [
-                'amount'      => $amount,
-                'description' => $description,
-                'success_url' => $successUrl,
-                'cancel_url'  => $cancelUrl,
-                'reference'   => $reference,
-                'status'      => PaymentCpt::STATUS_PENDING,
+                PaymentCpt::META_AMOUNT => $amount,
+                '_aslan_description'    => $description,
+                '_aslan_success_url'    => $successUrl,
+                '_aslan_cancel_url'     => $cancelUrl,
+                '_aslan_reference'      => $reference,
+                PaymentCpt::META_STATUS => PaymentCpt::STATUS_PENDING,
             ],
         ]);
         if (! $cptId) {
@@ -78,16 +92,10 @@ final class ShortcodePayRoute
                 sprintf('shortcode_%d', $cptId)
             );
         } catch (AslanWooException) {
-            update_post_meta($cptId, 'status', PaymentCpt::STATUS_FAILED);
+            update_post_meta($cptId, PaymentCpt::META_STATUS, PaymentCpt::STATUS_FAILED);
             return new WP_REST_Response(['error' => 'session_create_failed'], 502);
         }
 
         return new WP_REST_Response(['redirect' => $session->url], 200);
-    }
-
-    private function localUrl(string $candidate, string $fallback): string
-    {
-        $candidate = esc_url_raw($candidate);
-        return $candidate === '' ? $fallback : wp_validate_redirect($candidate, $fallback);
     }
 }
