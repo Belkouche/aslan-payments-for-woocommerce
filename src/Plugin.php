@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Aslan\Woo;
 
+use Aslan\Woo\Client\AslanHttpClient;
 use Aslan\Woo\Config;
+use Aslan\Woo\Service\CheckoutService;
 
 final class Plugin
 {
@@ -30,11 +32,16 @@ final class Plugin
 
     private function register(): void
     {
-        $config = new Config();
+        $config          = new Config();
+        $httpClient      = new AslanHttpClient(AslanHttpClient::sdkFactory($config->activeSecretKey()));
+        $checkoutService = new CheckoutService($httpClient);
 
-        add_filter('woocommerce_payment_gateways', static function (array $gateways) use ($config): array {
-            $gateways[] = new WooCommerce\Gateway($config);
-            return $gateways;
-        });
+        add_filter(
+            'woocommerce_payment_gateways',
+            static function (array $gateways) use ($config, $checkoutService): array {
+                $gateways[] = new WooCommerce\Gateway($config, $checkoutService);
+                return $gateways;
+            }
+        );
     }
 }

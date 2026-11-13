@@ -4,20 +4,27 @@ declare(strict_types=1);
 
 namespace Aslan\Woo\WooCommerce;
 
+use Aslan\Woo\Client\AslanTransientException;
+use Aslan\Woo\Client\AslanWooException;
 use Aslan\Woo\Config;
+use Aslan\Woo\Service\CheckoutService;
+use Aslan\Woo\Service\NonWholeMadException;
+use WC_Order;
 use WC_Payment_Gateway;
 
 /**
- * Minimal gateway — registered in Woo, surfaces on checkout, process_payment
- * still returns failure. Phase 6 wires up the real session create.
+ * Gateway — registered in Woo, surfaces on checkout, and process_payment
+ * creates an Aslan checkout session and redirects the customer to it.
  */
 // phpcs:disable PSR1.Methods.CamelCapsMethodName.NotCamelCaps -- method names are fixed by WC_Payment_Gateway.
 final class Gateway extends WC_Payment_Gateway
 {
     public const ID = 'aslan';
 
-    public function __construct(private readonly Config $config)
-    {
+    public function __construct(
+        private readonly Config $config,
+        private readonly CheckoutService $checkoutService,
+    ) {
         $this->id                 = self::ID;
         $this->method_title       = __('Aslan', 'aslan-payments-for-woocommerce');
         $this->method_description = __(
@@ -55,14 +62,58 @@ final class Gateway extends WC_Payment_Gateway
 
     /**
      * @param int $order_id
-     * @return array{result: string, messages: string}
+     * @return array{result: string, messages?: string, redirect?: string}
      */
     public function process_payment($order_id): array
     {
-        // Phase 6 implements this.
+        $order = wc_get_order($order_id);
+        if (! $order instanceof WC_Order) {
+            return [
+                'result'   => 'failure',
+                'messages' => __('Order not found.', 'aslan-payments-for-woocommerce'),
+            ];
+        }
+
+        try {
+            $result = $this->checkoutService->createSessionForOrder($order);
+        } catch (NonWholeMadException) {
+            wc_add_notice(
+                __(
+                    'Aslan accepts whole MAD amounts only. Please remove decimals from product prices or taxes.',
+                    'aslan-payments-for-woocommerce'
+                ),
+                'error'
+            );
+            return ['result' => 'failure'];
+        } catch (AslanTransientException $e) {
+            $order->add_order_note(
+                sprintf('Aslan transient error: %s (req %s)', $e->getMessage(), $e->aslanRequestId ?? 'n/a')
+            );
+            wc_add_notice(
+                __(
+                    'Payment service is temporarily unavailable. Please try again in a moment.',
+                    'aslan-payments-for-woocommerce'
+                ),
+                'error'
+            );
+            return ['result' => 'failure'];
+        } catch (AslanWooException $e) {
+            $order->add_order_note(sprintf('Aslan error: %s', $e->getMessage()));
+            wc_add_notice(
+                __(
+                    'Payment could not be started. Please try again or choose another method.',
+                    'aslan-payments-for-woocommerce'
+                ),
+                'error'
+            );
+            return ['result' => 'failure'];
+        }
+
+        $order->update_status('pending', __('Awaiting Aslan payment', 'aslan-payments-for-woocommerce'));
+
         return [
-            'result'   => 'failure',
-            'messages' => __('Aslan Payments is not yet implemented.', 'aslan-payments-for-woocommerce'),
+            'result'   => 'success',
+            'redirect' => $result->redirectUrl,
         ];
     }
 }
