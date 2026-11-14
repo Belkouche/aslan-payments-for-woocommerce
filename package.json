@@ -1,0 +1,12 @@
+{
+  "name": "aslan-payments-for-woocommerce-e2e",
+  "private": true,
+  "scripts": {
+    "e2e:up": "docker compose -f docker/docker-compose.e2e.yml up -d --build",
+    "e2e:down": "docker compose -f docker/docker-compose.e2e.yml down -v",
+    "e2e": "playwright test -c tests/E2E/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

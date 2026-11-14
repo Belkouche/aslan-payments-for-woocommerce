@@ -7,3 +7,6 @@ build/
 dist/
 .phpunit.cache/
 .phpunit.result.cache
+test-results/
+playwright-report/
+tests/E2E/.auth/

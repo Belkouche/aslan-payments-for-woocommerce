@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<psalm errorLevel="8" findUnusedBaselineEntry="true">
+  <projectFiles>
+    <directory name="src"/>
+    <ignoreFiles><directory name="vendor"/></ignoreFiles>
+  </projectFiles>
+  <stubs>
+    <file name="vendor/php-stubs/wordpress-stubs/wordpress-stubs.php"/>
+    <file name="vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php"/>
+  </stubs>
+  <issueHandlers>
+    <!-- WP/WC stubs ship docblocks Psalm cannot parse; unused-code is WP-hook driven (false positives without a WP plugin) -->
+    <InvalidDocblock><errorLevel type="suppress"><directory name="vendor"/></errorLevel></InvalidDocblock>
+    <PossiblyInvalidDocblockTag><errorLevel type="suppress"><directory name="vendor"/></errorLevel></PossiblyInvalidDocblockTag>
+    <!-- Plugin constants come from the main plugin file / WP core, not scanned; #[Override] needs PHP 8.3, plugin supports 8.2 -->
+    <UndefinedConstant errorLevel="suppress"/>
+    <MissingOverrideAttribute errorLevel="suppress"/>
+    <UnusedClass errorLevel="suppress"/>
+    <UnusedMethod errorLevel="suppress"/>
+    <PossiblyUnusedMethod errorLevel="suppress"/>
+    <UnusedProperty errorLevel="suppress"/>
+    <PossiblyUnusedProperty errorLevel="suppress"/>
+    <TaintedSql errorLevel="error"/>
+    <TaintedHtml errorLevel="error"/>
+    <TaintedShell errorLevel="error"/>
+    <TaintedInclude errorLevel="error"/>
+    <TaintedEval errorLevel="error"/>
+    <TaintedCookie errorLevel="error"/>
+    <TaintedHeader errorLevel="error"/>
+    <TaintedUnserialize errorLevel="error"/>
+  </issueHandlers>
+</psalm>

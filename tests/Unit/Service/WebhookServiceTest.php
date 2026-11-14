@@ -1,0 +1,533 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Aslan\Woo\Tests\Unit\Service;
+
+use Aslan\Woo\Service\WebhookService;
+use Aslan\Woo\Service\WebhookVerificationException;
+use Brain\Monkey;
+use Brain\Monkey\Functions;
+use PHPUnit\Framework\TestCase;
+
+final class WebhookServiceTest extends TestCase
+{
+    private const SECRET = 'whsec_test_abcdef';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Monkey\setUp();
+    }
+
+    protected function tearDown(): void
+    {
+        Monkey\tearDown();
+        parent::tearDown();
+    }
+
+    private function aslanOrder(): \WC_Order&\PHPUnit\Framework\MockObject\MockObject
+    {
+        $order = $this->createMock(\WC_Order::class);
+        $order->method('get_total')->willReturn('500.00');
+        $order->method('get_payment_method')->willReturn('aslan');
+        $order->method('get_currency')->willReturn('MAD');
+        $order->method('get_status')->willReturn('pending');
+        $order->method('is_paid')->willReturn(false);
+        return $order;
+    }
+
+    public function test_valid_signature_returns_decoded_event(): void
+    {
+        $service = new WebhookService();
+        $t       = time();
+        $body    = '{"id":"evt_01HZ","event":"payment.succeeded","data":{}}';
+        $sig     = hash_hmac('sha256', $t . '.' . $body, self::SECRET);
+        $header  = sprintf('t=%d,v1=%s', $t, $sig);
+
+        $event = $service->verify($body, $header, self::SECRET);
+
+        self::assertSame('evt_01HZ', $event['id']);
+        self::assertSame('payment.succeeded', $event['event']);
+    }
+
+    public function test_invalid_signature_throws(): void
+    {
+        $service = new WebhookService();
+        $t       = time();
+        $body    = '{"id":"evt_01HZ"}';
+        $header  = sprintf('t=%d,v1=%s', $t, 'baadbaadbaadbaad');
+
+        $this->expectException(WebhookVerificationException::class);
+        $service->verify($body, $header, self::SECRET);
+    }
+
+    public function test_stale_timestamp_throws(): void
+    {
+        $service = new WebhookService();
+        $t       = time() - 600; // 10 min old
+        $body    = '{"id":"evt_01HZ"}';
+        $sig     = hash_hmac('sha256', $t . '.' . $body, self::SECRET);
+        $header  = sprintf('t=%d,v1=%s', $t, $sig);
+
+        $this->expectException(WebhookVerificationException::class);
+        $service->verify($body, $header, self::SECRET);
+    }
+
+    public function test_malformed_header_throws(): void
+    {
+        $service = new WebhookService();
+
+        $this->expectException(WebhookVerificationException::class);
+        $service->verify('{}', 'not-a-signature', self::SECRET);
+    }
+
+    public function test_payment_succeeded_calls_payment_complete_with_order(): void
+    {
+        $order = $this->aslanOrder();
+        $order->expects(self::once())->method('payment_complete')->with('pay_01HZ');
+        $order->expects(self::atLeastOnce())->method('update_meta_data');
+
+        $service = new WebhookService();
+        $service->handle(
+            event: [
+                'id'    => 'evt_01HZ',
+                'event' => 'payment.succeeded',
+                'data'  => [
+                    'id'        => 'pay_01HZ',
+                    'amount'    => 50000,
+                    'currency'  => 'MAD',
+                    'metadata'  => ['wc_order_id' => '42'],
+                    'cardLast4' => '4242',
+                ],
+            ],
+            orderLoader: fn (int $id) => $id === 42 ? $order : null,
+        );
+    }
+
+    public function test_payment_failed_sets_status_failed(): void
+    {
+        $order = $this->aslanOrder();
+        $order->expects(self::once())->method('update_status')->with('failed', self::anything());
+
+        $service = new WebhookService();
+        $service->handle(
+            event: [
+                'id'    => 'evt_02HZ',
+                'event' => 'payment.failed',
+                'data'  => [
+                    'id'            => 'pay_02HZ',
+                    'amount'        => 50000,
+                    'currency'      => 'MAD',
+                    'metadata'      => ['wc_order_id' => '42'],
+                    'failureReason' => 'issuer_declined',
+                ],
+            ],
+            orderLoader: fn (int $id) => $id === 42 ? $order : null,
+        );
+    }
+
+    public function test_unknown_order_logs_and_returns(): void
+    {
+        $service = new WebhookService();
+
+        $service->handle(
+            event: [
+                'id'    => 'evt_03HZ',
+                'event' => 'payment.succeeded',
+                'data'  => ['metadata' => ['wc_order_id' => '999']],
+            ],
+            orderLoader: fn (int $id) => null,
+        );
+
+        // Reaching here is the assertion: no exception thrown.
+        self::assertTrue(true);
+    }
+
+    public function test_duplicate_event_id_is_noop(): void
+    {
+        $order = $this->aslanOrder();
+        $order->expects(self::once())->method('payment_complete');
+
+        $seen     = [];
+        $recorder = static function (string $eventId) use (&$seen): bool {
+            if (in_array($eventId, $seen, true)) {
+                return false;
+            }
+            $seen[] = $eventId;
+            return true;
+        };
+
+        $service = new WebhookService();
+        $event   = [
+            'id'    => 'evt_dup',
+            'event' => 'payment.succeeded',
+            'data'  => ['id' => 'pay_01', 'amount' => 50000, 'currency' => 'MAD', 'metadata' => ['wc_order_id' => '42']],
+        ];
+
+        $service->handle($event, fn () => $order, $recorder);
+        $service->handle($event, fn () => $order, $recorder);
+    }
+
+    public function test_empty_secret_throws(): void
+    {
+        $service = new WebhookService();
+        $t       = time();
+        $body    = '{"id":"evt_01","event":"payment.succeeded","data":{}}';
+        $sig     = hash_hmac('sha256', $t . '.' . $body, 'any');
+        $header  = sprintf('t=%d,v1=%s', $t, $sig);
+
+        $this->expectException(WebhookVerificationException::class);
+        $service->verify($body, $header, '');
+    }
+
+    public function test_future_timestamp_beyond_skew_throws(): void
+    {
+        $service = new WebhookService();
+        $t       = time() + 120; // 2 min in the future — beyond 60s skew tolerance
+        $body    = '{"id":"evt_01","event":"payment.succeeded","data":{}}';
+        $sig     = hash_hmac('sha256', $t . '.' . $body, self::SECRET);
+        $header  = sprintf('t=%d,v1=%s', $t, $sig);
+
+        $this->expectException(WebhookVerificationException::class);
+        $service->verify($body, $header, self::SECRET);
+    }
+
+    public function test_handle_ignores_event_for_non_aslan_order(): void
+    {
+        $order = $this->createMock(\WC_Order::class);
+        $order->method('get_payment_method')->willReturn('stripe'); // not aslan
+        $order->method('get_total')->willReturn('500.00');
+        $order->expects(self::never())->method('payment_complete');
+        $order->expects(self::never())->method('update_status');
+
+        $service = new WebhookService();
+        $service->handle(
+            event: [
+                'id'    => 'evt_01',
+                'event' => 'payment.succeeded',
+                'data'  => [
+                    'id'       => 'pay_01',
+                    'amount'   => 50000,
+                    'currency' => 'MAD',
+                    'metadata' => ['wc_order_id' => '42'],
+                ],
+            ],
+            orderLoader: fn (int $id) => $id === 42 ? $order : null,
+        );
+    }
+
+    public function test_handle_ignores_payment_failed_on_paid_order(): void
+    {
+        $order = $this->createMock(\WC_Order::class);
+        $order->method('get_payment_method')->willReturn('aslan');
+        $order->method('get_total')->willReturn('500.00');
+        $order->method('get_currency')->willReturn('MAD');
+        $order->method('is_paid')->willReturn(true);
+        $order->expects(self::never())->method('update_status');
+
+        $service = new WebhookService();
+        $service->handle(
+            event: [
+                'id'    => 'evt_02',
+                'event' => 'payment.failed',
+                'data'  => [
+                    'id'       => 'pay_02',
+                    'amount'   => 50000,
+                    'currency' => 'MAD',
+                    'metadata' => ['wc_order_id' => '42'],
+                ],
+            ],
+            orderLoader: fn (int $id) => $id === 42 ? $order : null,
+        );
+    }
+
+    public function test_handle_ignores_event_with_amount_mismatch(): void
+    {
+        $order = $this->createMock(\WC_Order::class);
+        $order->method('get_payment_method')->willReturn('aslan');
+        $order->method('get_total')->willReturn('500.00');
+        $order->method('get_currency')->willReturn('MAD');
+        $order->expects(self::never())->method('payment_complete');
+
+        $service = new WebhookService();
+        $service->handle(
+            event: [
+                'id'    => 'evt_03',
+                'event' => 'payment.succeeded',
+                'data'  => [
+                    'id'       => 'pay_03',
+                    'amount'   => 1, // mismatch: order is 50000 centimes
+                    'currency' => 'MAD',
+                    'metadata' => ['wc_order_id' => '42'],
+                ],
+            ],
+            orderLoader: fn (int $id) => $id === 42 ? $order : null,
+        );
+    }
+
+    /** @return array<string, mixed> */
+    private function refundEvent(int $amount = 20000, string $txn = 'pay_01HZ', string $status = 'succeeded'): array
+    {
+        return [
+            'id'    => 'evt_rf',
+            'event' => 'refund.updated',
+            'data'  => ['refund' => [
+                'id'            => 'ref_01',
+                'transactionId' => $txn,
+                'amount'        => $amount,
+                'currency'      => 'MAD',
+                'status'        => $status,
+                'metadata'      => ['wc_order_id' => '42'],
+            ]],
+        ];
+    }
+
+    private function refundOrder(): \WC_Order&\PHPUnit\Framework\MockObject\MockObject
+    {
+        $order = $this->aslanOrder();
+        $order->method('get_id')->willReturn(42);
+        $order->method('get_refunds')->willReturn([]);
+        $order->method('get_meta_data')->willReturn([]);
+        $order->method('get_meta')->willReturnCallback(
+            static fn ($key = '') => $key === '_aslan_payment_id' ? 'pay_01HZ' : ''
+        );
+        return $order;
+    }
+
+    public function test_partial_refund_creates_wc_refund_for_refund_amount(): void
+    {
+        $wcRefund = new class {
+            public function update_meta_data(string $k, string $v): void
+            {
+            }
+            public function save(): void
+            {
+            }
+        };
+        Functions\expect('wc_create_refund')
+            ->once()
+            ->with(['order_id' => 42, 'amount' => 200.0, 'reason' => 'Aslan refund ref_01'])
+            ->andReturn($wcRefund);
+        Functions\when('is_wp_error')->justReturn(false);
+
+        (new WebhookService())->handle($this->refundEvent(), fn () => $this->refundOrder());
+        self::assertTrue(true);
+    }
+
+    public function test_refund_for_other_transaction_is_ignored(): void
+    {
+        Functions\expect('wc_create_refund')->never();
+
+        (new WebhookService())->handle($this->refundEvent(20000, 'pay_OTHER'), fn () => $this->refundOrder());
+        self::assertTrue(true);
+    }
+
+    public function test_refund_exceeding_order_total_is_ignored(): void
+    {
+        Functions\expect('wc_create_refund')->never();
+
+        (new WebhookService())->handle($this->refundEvent(50100), fn () => $this->refundOrder());
+        self::assertTrue(true);
+    }
+
+    public function test_pending_refund_is_ignored(): void
+    {
+        Functions\expect('wc_create_refund')->never();
+
+        (new WebhookService())->handle($this->refundEvent(20000, 'pay_01HZ', 'pending'), fn () => $this->refundOrder());
+        self::assertTrue(true);
+    }
+
+    public function test_refund_started_from_woo_is_not_duplicated(): void
+    {
+        Functions\expect('wc_create_refund')->never();
+        $order = $this->aslanOrder();
+        $order->method('get_meta')->willReturnCallback(
+            static fn ($key = '') => match ($key) {
+                '_aslan_payment_id'               => 'pay_01HZ',
+                '_aslan_initiated_refund_ref_01' => '1',
+                default                           => '',
+            }
+        );
+
+        (new WebhookService())->handle($this->refundEvent(), fn () => $order);
+        self::assertTrue(true);
+    }
+
+    /** @return object */
+    private function pendingMarker(string $key)
+    {
+        return new class ($key) {
+            public function __construct(private string $key)
+            {
+            }
+            /** @return array<string, string> */
+            public function get_data(): array
+            {
+                return ['key' => $this->key, 'value' => '1'];
+            }
+        };
+    }
+
+    private function wcRefundStub(): object
+    {
+        return new class {
+            public function update_meta_data(string $k, string $v): void
+            {
+            }
+            public function save(): void
+            {
+            }
+        };
+    }
+
+    public function test_refund_is_skipped_while_a_matching_pending_refund_attempt_exists(): void
+    {
+        Functions\expect('wc_create_refund')->never();
+        $order = $this->aslanOrder();
+        $order->method('get_meta')->willReturnCallback(
+            static fn ($key = '') => $key === '_aslan_payment_id' ? 'pay_01HZ' : ''
+        );
+        $order->method('get_meta_data')->willReturn(
+            [$this->pendingMarker('_aslan_pending_refund_pay_01HZ_20000_' . time() . '_nonceA')]
+        );
+
+        (new WebhookService())->handle($this->refundEvent(), fn () => $order);
+        self::assertTrue(true);
+    }
+
+    public function test_refund_ignores_mismatched_pending_marker(): void
+    {
+        Functions\expect('wc_create_refund')->once()->andReturn($this->wcRefundStub());
+        Functions\when('is_wp_error')->justReturn(false);
+        $order = $this->aslanOrder();
+        $order->method('get_meta')->willReturnCallback(
+            static fn ($key = '') => $key === '_aslan_payment_id' ? 'pay_01HZ' : ''
+        );
+        $order->method('get_meta_data')->willReturn(
+            [$this->pendingMarker('_aslan_pending_refund_pay_01HZ_5000_' . time() . '_nonceA')]
+        );
+        $order->method('get_refunds')->willReturn([]);
+
+        (new WebhookService())->handle($this->refundEvent(), fn () => $order);
+        self::assertTrue(true);
+    }
+
+    public function test_refund_sweeps_stale_pending_marker_and_processes(): void
+    {
+        Functions\expect('wc_create_refund')->once()->andReturn($this->wcRefundStub());
+        Functions\when('is_wp_error')->justReturn(false);
+        $staleKey = '_aslan_pending_refund_pay_01HZ_20000_' . (time() - 400) . '_nonceA';
+        $order    = $this->aslanOrder();
+        $order->method('get_meta')->willReturnCallback(
+            static fn ($key = '') => $key === '_aslan_payment_id' ? 'pay_01HZ' : ''
+        );
+        $order->method('get_meta_data')->willReturn([$this->pendingMarker($staleKey)]);
+        $order->method('get_refunds')->willReturn([]);
+        $order->expects(self::once())->method('delete_meta_data')->with($staleKey);
+        $order->expects(self::once())->method('save');
+
+        (new WebhookService())->handle($this->refundEvent(), fn () => $order);
+    }
+
+    public function test_two_concurrent_pending_markers_dont_collide(): void
+    {
+        // Same paymentId + amount + second, distinct nonces: both markers survive when
+        // the webhook matches one of them (neither is swept, still within TTL).
+        Functions\expect('wc_create_refund')->never();
+        $t       = time();
+        $markerA = '_aslan_pending_refund_pay_01HZ_20000_' . $t . '_nonceA';
+        $markerB = '_aslan_pending_refund_pay_01HZ_20000_' . $t . '_nonceB';
+        self::assertNotSame($markerA, $markerB);
+
+        $order = $this->aslanOrder();
+        $order->method('get_meta')->willReturnCallback(
+            static fn ($key = '') => $key === '_aslan_payment_id' ? 'pay_01HZ' : ''
+        );
+        $order->method('get_meta_data')->willReturn(
+            [$this->pendingMarker($markerA), $this->pendingMarker($markerB)]
+        );
+        $order->expects(self::never())->method('delete_meta_data');
+        $order->expects(self::never())->method('save');
+
+        (new WebhookService())->handle($this->refundEvent(), fn () => $order);
+    }
+
+    /**
+     * @param array<string, string> $meta
+     * @return array<string, string> updated meta, by reference-free capture
+     */
+    private function runCptEvent(string $type, array $data, array $meta, string $postType = 'aslan_payment'): array
+    {
+        $post            = new \WP_Post();
+        $post->post_type = $postType;
+        Functions\when('get_post')->justReturn($post);
+        Functions\when('get_post_meta')->alias(
+            static fn (int $id, string $key) => $meta[$key] ?? ''
+        );
+        $written = [];
+        Functions\when('update_post_meta')->alias(
+            static function (int $id, string $key, $value) use (&$written): bool {
+                $written[$key] = $value;
+                return true;
+            }
+        );
+
+        (new WebhookService())->handle(
+            [
+                'id'    => 'evt_cpt',
+                'event' => $type,
+                'data'  => $data + ['metadata' => ['aslan_payment_id' => '7']],
+            ],
+            fn () => null
+        );
+        return $written;
+    }
+
+    public function test_cpt_payment_succeeded_updates_status(): void
+    {
+        $written = $this->runCptEvent(
+            'payment.succeeded',
+            ['id' => 'pay_9', 'amount' => 50000, 'currency' => 'MAD'],
+            ['_aslan_amount' => '50000', '_aslan_status' => 'pending']
+        );
+
+        self::assertSame('succeeded', $written['_aslan_status']);
+        self::assertSame('pay_9', $written['_aslan_payment_ref']);
+    }
+
+    public function test_cpt_amount_mismatch_is_ignored(): void
+    {
+        $written = $this->runCptEvent(
+            'payment.succeeded',
+            ['id' => 'pay_9', 'amount' => 100, 'currency' => 'MAD'],
+            ['_aslan_amount' => '50000', '_aslan_status' => 'pending']
+        );
+
+        self::assertSame([], $written);
+    }
+
+    public function test_cpt_wrong_post_type_is_ignored(): void
+    {
+        $written = $this->runCptEvent(
+            'payment.succeeded',
+            ['id' => 'pay_9', 'amount' => 50000, 'currency' => 'MAD'],
+            ['_aslan_amount' => '50000', '_aslan_status' => 'pending'],
+            'post'
+        );
+
+        self::assertSame([], $written);
+    }
+
+    public function test_cpt_failed_does_not_regress_succeeded(): void
+    {
+        $written = $this->runCptEvent(
+            'payment.failed',
+            ['id' => 'pay_9', 'amount' => 50000, 'currency' => 'MAD'],
+            ['_aslan_amount' => '50000', '_aslan_status' => 'succeeded']
+        );
+
+        self::assertSame([], $written);
+    }
+}

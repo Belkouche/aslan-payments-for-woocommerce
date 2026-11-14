@@ -1,0 +1,12 @@
+parameters:
+  level: 8
+  paths:
+    - src
+  excludePaths:
+    analyse:
+      - vendor
+  scanDirectories:
+    - vendor/php-stubs/wordpress-stubs
+    - vendor/php-stubs/woocommerce-stubs
+  bootstrapFiles:
+    - tests/phpstan-bootstrap.php

@@ -151,12 +151,17 @@ Each phase ends with a commit. No partial work left between phases.
 
 - [ ] **Step 1: Write `composer.json`**
 
+> **Correction (2026-11-13):** `aslan/payment-php` is not published to Packagist. We add a VCS repository so Composer resolves it from GitHub. Source: the SDK's README §3 Installation documents this exact workaround.
+
 ```json
 {
   "name": "belkouche/aslan-payments-for-woocommerce",
   "description": "Accept Moroccan card, mobile wallet, and cash-agent payments through Aslan on WooCommerce.",
   "type": "wordpress-plugin",
   "license": "GPL-2.0-or-later",
+  "repositories": [
+    { "type": "vcs", "url": "https://github.com/Belkouche/aslan-payment-php-symfony" }
+  ],
   "require": {
     "php": "~8.2.35 || ~8.3.36 || ~8.4.27 || >=8.5.12",
     "aslan/payment-php": "^0.2.0"
@@ -193,15 +198,9 @@ Each phase ends with a commit. No partial work left between phases.
 }
 ```
 
-- [ ] **Step 2: Append to `.gitignore`**
+- [ ] **Step 2: Ensure `.gitignore` lists these entries (append only what's missing — don't duplicate lines already present).**
 
-```
-vendor/
-composer.lock
-# (we'll commit composer.lock before release in phase 15, not now)
-```
-
-Actually, do commit `composer.lock` — this is an application, not a library. Replace with:
+Required entries (commit `composer.lock` — this is an application, not a library):
 
 ```
 vendor/
@@ -211,7 +210,11 @@ node_modules/
 build/
 dist/
 *.log
+.DS_Store
+.superpowers/
 ```
+
+`.superpowers/` is the superpowers-skill scratch directory (brainstorm visual-companion state, plan intermediates). It should never ship to wordpress.org.
 
 - [ ] **Step 3: Run `composer install`**
 
@@ -312,6 +315,7 @@ final class Plugin
         if (self::$instance === null) {
             self::boot();
         }
+        assert(self::$instance !== null);
         return self::$instance;
     }
 
@@ -391,19 +395,29 @@ if (! defined('ABSPATH')) { define('ABSPATH', '/dev/null/'); }
 
 - [ ] **Step 4: Write `phpcs.xml.dist`**
 
+> **Decision (2026-11-13):** the plugin code is PSR-12 style (typed PHP 8.2+, short array syntax, modern braces). Instead of the full `WordPress` ruleset (which mandates WPCS style — tabs, Yoda conditions, `array()` syntax, docblocks everywhere — and would force us to un-modernize the code), we use `WordPress-Core` for structural rules only, then explicitly add WP-specific **security** and **escaping** sniffs (the ones that matter for a payment plugin). This matches how Stripe, Mollie, and Adyen's current WooCommerce plugins lint their PHP.
+
 ```xml
 <?xml version="1.0"?>
 <ruleset name="Aslan Woo Plugin">
-  <description>WordPress Coding Standards for Aslan Payments for WooCommerce</description>
+  <description>Security/escaping sniffs from WPCS; PSR-12 for everything else.</description>
   <file>src</file>
   <file>aslan-payments-for-woocommerce.php</file>
   <arg name="extensions" value="php"/>
   <arg name="colors"/>
   <arg value="sp"/>
-  <rule ref="WordPress">
-    <exclude name="WordPress.Files.FileName"/>
-    <exclude name="Generic.Commenting.DocComment.MissingShort"/>
-  </rule>
+
+  <!-- PSR-12 is the base style for modern typed PHP. -->
+  <rule ref="PSR12"/>
+
+  <!-- Security/escaping sniffs that the WordPress ruleset provides. -->
+  <rule ref="WordPress.Security"/>
+  <rule ref="WordPress.WP.I18n"/>
+  <rule ref="WordPress.WP.AlternativeFunctions"/>
+  <rule ref="WordPress.PHP.NoSilencedErrors"/>
+  <rule ref="WordPress.DB.PreparedSQL"/>
+  <rule ref="WordPress.DB.PreparedSQLPlaceholders"/>
+
   <config name="minimum_supported_wp_version" value="6.4"/>
   <config name="testVersion" value="8.2-"/>
 </ruleset>
@@ -419,7 +433,15 @@ declare(strict_types=1);
 require_once __DIR__ . '/../vendor/autoload.php';
 ```
 
-- [ ] **Step 6: Run the lint/test/analyse chain and confirm empty-pass**
+- [ ] **Step 6: Add placeholder files so empty test directories don't warn**
+
+Create empty files:
+- `tests/Unit/.gitkeep`
+- `tests/Integration/.gitkeep`
+
+PHPUnit with `failOnWarning="true"` warns on a completely missing suite directory; `.gitkeep` makes the dirs exist without putting a test in them. They stay in place as the suites grow.
+
+- [ ] **Step 7: Run the lint/test/analyse chain and confirm empty-pass**
 
 Run: `vendor/bin/phpunit --testsuite unit`
 Expected: `No tests executed!` — passes.
@@ -428,12 +450,12 @@ Run: `vendor/bin/phpstan analyse src --level=8`
 Expected: `[OK] No errors`
 
 Run: `vendor/bin/phpcs`
-Expected: exit 0 (clean).
+Expected: exit 0 (clean). If the `WordPress` ruleset flags `declare(strict_types=1)` as a violation (this depends on the wpcs 3.x minor), add it to the ruleset's `<exclude>` list with a comment explaining why, then re-run.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add phpunit.xml.dist phpstan.neon.dist phpcs.xml.dist tests/bootstrap.php tests/phpstan-bootstrap.php
+git add phpunit.xml.dist phpstan.neon.dist phpcs.xml.dist tests/bootstrap.php tests/phpstan-bootstrap.php tests/Unit/.gitkeep tests/Integration/.gitkeep
 git commit -m "chore: phpunit, phpstan, phpcs configs"
 ```
 
@@ -457,7 +479,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        php: ['8.2.35', '8.3.36', '8.4.27']
+        php: ['8.2.35', '8.3.36', '8.4.27', '8.5.12']
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
@@ -702,6 +724,15 @@ git commit -m "feat(config): mode-aware wp_options wrapper"
 # Phase 3: HTTP client (Layer 1)
 
 **Why third:** key downstream dependency — every service in Layer 2 uses this. Making it WP-free means we can unit-test every service without a WP bootstrap.
+
+> **SDK reality check (learned during implementation, 2026-11-13):**
+> - `Aslan\Payment\Aslan`, `AslanException`, and all resource classes (`CheckoutSessions`, `WebhooksConfig`, `Refunds`, `ApiKeys`) are `final`. They cannot be subclassed or mocked with `createMock`.
+> - Testing seam: inject a fake `Aslan\Payment\HttpClient\HttpClientInterface` into a real `Aslan` constructor, with `maxRetries: 0` so the SDK's own retry doesn't interfere with ours.
+> - `AslanException` exposes `public readonly string $errorCode`, `public readonly int $httpStatus`, `public readonly ?string $requestId`. Use direct property access, not `method_exists()`.
+> - Build test exceptions with static factories: `AslanException::authenticationError(...)`, `::validationError(...)`, `::serverError(...)`, `::networkError(...)`.
+> - `CheckoutSession::fromArray` requires a `token` field — fixtures must include it.
+> - Network failures come through as `errorCode === 'NETWORK_ERROR'` with `httpStatus === 0`.
+> - `AslanRequestException` CANNOT be `final` — `AslanAuthException` extends it. The plan's Task 3.1 code was split into 4 files, one class each, with `AslanRequestException` non-final. This is the committed implementation.
 
 ### Task 3.1: `AslanWooException` hierarchy
 
@@ -1216,6 +1247,14 @@ git commit -m "feat(client): connection-retry with backoff"
 
 **Why fourth:** this is the "automatic setup" magic the spec sells. Settings page writes keys → this service validates each key via `pingApiKeys()` → upserts webhook via `upsertWebhookConfig()` → stores returned signing secret. One service, one responsibility.
 
+> **SDK reality check (learned during implementation, 2026-11-13):**
+> - `Aslan\Payment\Dto\ApiKey` has **no `merchantId` field**. The DTO carries: id, name, environment, prefix, secretKey, status, lastUsedAt, createdAt, type, publishableKey, revokedAt. The plan's original code used `$apiKey->merchantId` — it doesn't exist.
+> - `KeyRegistrationResult` was updated to carry `apiKeyId` (`ApiKey->id`) + `signingSecret` + `webhookUrl` instead of a merchant id.
+> - **Downstream impact (Phase 12):** the admin UI that said "verified — merchant %s" and the option key `aslan_woo_{mode}_merchant_id` now store/show `apiKeyId` instead. The setup status card wording changes from "merchant mch_01HZ" to "key ak_01HZ". The user-facing phrasing can be "verified — API key %s" or "verified" (no identifier) since merchants don't operate on API key IDs.
+> - `AslanHttpClient` had to drop its `final` modifier so `createMock(AslanHttpClient::class)` works. Alternative would be an interface, but 4-line change vs. a new abstraction isn't worth it for now.
+> - The 6 classes the plan put in one file (`KeyLifecycleService` + 5 exception/result classes) were split into 6 files — `phpcs` PSR-1 MultipleClasses rule rejects multiple classes per file, consistent with Phase 3.
+> - **Known issue, filed as follow-up:** `register()` uses `$apiKeys[0]` from `pingApiKeys()`. If a merchant has several active keys, the first returned may not be the one just pasted. The correct match is by prefix: parse `sk_{type}_{prefix}_{secret}` from the pasted key and find the `ApiKey` with that prefix. Fixed in a Phase 4 follow-up commit — see below.
+
 ### Task 4.1: Validate-and-register for the active mode
 
 **Files:**
@@ -1438,38 +1477,7 @@ git commit -m "feat(service): KeyLifecycleService validates key and upserts webh
 
 ### Task 5.1: Add WP + Woo PHPStan stubs
 
-**Files:**
-- Modify: `composer.json`
-- Modify: `phpstan.neon.dist`
-
-- [ ] **Step 1: Add dev deps**
-
-```bash
-composer require --dev php-stubs/wordpress-stubs php-stubs/woocommerce-stubs
-```
-
-- [ ] **Step 2: Update `phpstan.neon.dist`**
-
-```yaml
-parameters:
-  level: 8
-  paths:
-    - src
-  excludePaths:
-    - vendor
-  scanDirectories:
-    - vendor/php-stubs/wordpress-stubs
-    - vendor/php-stubs/woocommerce-stubs
-  bootstrapFiles:
-    - tests/phpstan-bootstrap.php
-```
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add composer.json composer.lock phpstan.neon.dist
-git commit -m "chore: WP + WooCommerce stubs for PHPStan"
-```
+Already done — stubs installed in a Phase 2 cleanup commit f06a375. Skip.
 
 ### Task 5.2: Gateway class, registered via filter
 
@@ -2772,6 +2780,12 @@ git commit -m "feat(status): register aslan-awaiting-cash order status"
 ---
 
 # Phase 9: Refund flow
+
+> **SDK reality check (learned during implementation, 2026-11-13):**
+> - **No `refund.succeeded` event exists.** The Aslan API emits `refund.created` and `refund.updated`, with the refund nested under `data.refund` carrying a `status` field (`pending` / `succeeded` / `failed`). The plan's original text said `refund.succeeded`; the implementation routes both event types to one handler that acts on `data.refund.status === 'succeeded'`.
+> - **SDK uses `transactionId`, not `paymentId`.** The Refund DTO and `Refunds::create` take `transactionId`. Internally we still store `_aslan_payment_id` on the order as our meta key (that's our naming, not the SDK's).
+> - **Woo creates its own refund record after `process_refund` returns successfully.** If the webhook also created one we'd get duplicates. RefundService writes an `_aslan_initiated_refund_{id}` meta for the webhook handler to dedupe against. See the race-condition fix in a follow-up commit.
+> - **Idempotency key uses attempt-level UUID**, not amount-level. Two refunds of 100 MAD on the same order are distinct operations; amount-level dedup would silently drop the second (financial-integrity bug surfaced in automated review).
 
 ### Task 9.1: `RefundService` + `process_refund` hook
 
