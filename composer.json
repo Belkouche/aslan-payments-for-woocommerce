@@ -7,7 +7,7 @@
     { "type": "vcs", "url": "https://github.com/Belkouche/aslan-payment-php-symfony" }
   ],
   "require": {
-    "php": "~8.2.35 || ~8.3.36 || ~8.4.27 || >=8.5.12",
+    "php": "~8.3.36 || ~8.4.27 || >=8.5.12",
     "aslan/payment-php": "^0.2.0"
   },
   "require-dev": {
@@ -41,6 +41,9 @@
   "config": {
     "allow-plugins": {
       "dealerdirect/phpcodesniffer-composer-installer": true
+    },
+    "platform": {
+      "php": "8.3.36"
     }
   }
 }
