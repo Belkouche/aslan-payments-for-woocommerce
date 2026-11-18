@@ -4,7 +4,7 @@ Tags: woocommerce, payments, morocco, aslan, payment-gateway
 Requires at least: 6.4
 Tested up to: 6.7
 Requires PHP: 8.3
-Stable tag: 0.1.0
+Stable tag: 0.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -26,6 +26,13 @@ Aslan Payments for WooCommerce adds Aslan as a payment method on your WooCommerc
 3. WooCommerce → Settings → Payments → Aslan → paste your test and live secret keys.
 
 == Changelog ==
+
+= 0.1.1 =
+* Test mode now automatically targets the Aslan staging API (staging-api.aslanpay.ma);
+  live mode targets production (api.aslanpay.ma). No more "401 AUTHENTICATION_ERROR"
+  when a test key is saved under the Test setting.
+* Settings now reject a sk_test_ key saved under Live mode (and vice versa) with
+  a clear error, before any network call.
 
 = 0.1.0 =
 * Initial release.

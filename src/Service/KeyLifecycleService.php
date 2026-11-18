@@ -20,7 +20,7 @@ use Closure;
  */
 final class KeyLifecycleService
 {
-    /** @param Closure(string): AslanHttpClient $httpClientFactory */
+    /** @param Closure(string, string): AslanHttpClient $httpClientFactory */
     public function __construct(private readonly Closure $httpClientFactory)
     {
     }
@@ -29,7 +29,23 @@ final class KeyLifecycleService
     public function register(string $expectedMode, string $secretKey, string $webhookUrl): KeyRegistrationResult
     {
         $secretKey = trim($secretKey);
-        $client = ($this->httpClientFactory)($secretKey);
+
+        // Local prefix guard: catch a sk_test_ pasted under Live mode (and the
+        // reverse) before the SDK fires any request. Without this, the key
+        // reaches the wrong environment (staging accepts only sk_test_, prod
+        // only sk_live_) and comes back as an opaque 401 — Krustys lost a day
+        // on exactly that confusion.
+        $keyPrefix = $expectedMode === 'live' ? 'sk_live_' : 'sk_test_';
+        if (strpos($secretKey, $keyPrefix) !== 0) {
+            $pastedKind = str_starts_with($secretKey, 'sk_live_')
+                ? 'live'
+                : (str_starts_with($secretKey, 'sk_test_') ? 'test' : 'unknown');
+            throw new WrongModeException(
+                sprintf('Key is %s but you are setting it as %s.', $pastedKind, $expectedMode)
+            );
+        }
+
+        $client = ($this->httpClientFactory)($secretKey, $expectedMode);
 
         try {
             $apiKeys = $client->pingApiKeys();

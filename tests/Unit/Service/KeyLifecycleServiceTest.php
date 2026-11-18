@@ -46,7 +46,7 @@ final class KeyLifecycleServiceTest extends TestCase
             ->with(['url' => self::WEBHOOK_URL])
             ->willReturn($webhookConfig);
 
-        $service = new KeyLifecycleService(httpClientFactory: fn (string $key) => $client);
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key, string $mode) => $client);
 
         $result = $service->register('test', 'sk_test_mA3xZ_secret', self::WEBHOOK_URL);
 
@@ -61,29 +61,32 @@ final class KeyLifecycleServiceTest extends TestCase
         $client = $this->createMock(AslanHttpClient::class);
         $client->method('pingApiKeys')->willThrowException(new AslanAuthException('unauthorized'));
 
-        $service = new KeyLifecycleService(httpClientFactory: fn (string $key) => $client);
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key, string $mode) => $client);
 
         $this->expectException(InvalidKeyException::class);
         $service->register('test', 'sk_test_bad', self::WEBHOOK_URL);
     }
 
-    public function test_register_mismatched_key_type_throws_wrong_mode_exception(): void
+    public function test_register_server_reports_mismatched_key_type(): void
     {
+        // Covers the belt-and-suspenders branch: the pasted prefix says test but
+        // the server surfaces type=live for that same prefix (would only happen
+        // if server-side types ever diverged from the key format).
         $client = $this->createMock(AslanHttpClient::class);
 
         $apiKey = ApiKey::fromArray([
             'id' => 'ak_01HZ',
             'name' => 'default',
             'type' => 'live',
-            'prefix' => 'mA3xZ',
+            'prefix' => 'mA3xZ567',
             'createdAt' => '2026-01-01T00:00:00Z',
         ]);
         $client->method('pingApiKeys')->willReturn([$apiKey]);
 
-        $service = new KeyLifecycleService(httpClientFactory: fn (string $key) => $client);
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key, string $mode) => $client);
 
         $this->expectException(WrongModeException::class);
-        $service->register('test', 'sk_live_mA3xZ_secret', self::WEBHOOK_URL);
+        $service->register('test', 'sk_test_mA3xZ567secret', self::WEBHOOK_URL);
     }
 
     public function test_register_picks_key_matching_pasted_prefix_not_first(): void
@@ -126,7 +129,7 @@ final class KeyLifecycleServiceTest extends TestCase
         ]);
         $client->method('upsertWebhookConfig')->willReturn($webhookConfig);
 
-        $service = new KeyLifecycleService(httpClientFactory: fn (string $key) => $client);
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key, string $mode) => $client);
 
         $result = $service->register('test', 'sk_test_mA3xZ_secret', 'https://shop.example.ma/wp-json/aslan/v1/webhook');
 
@@ -149,7 +152,7 @@ final class KeyLifecycleServiceTest extends TestCase
         ]);
         $client->method('pingApiKeys')->willReturn([$otherKey]);
 
-        $service = new KeyLifecycleService(httpClientFactory: fn (string $key) => $client);
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key, string $mode) => $client);
 
         $this->expectException(\Aslan\Woo\Service\InvalidKeyException::class);
         $service->register('test', 'sk_test_mA3xZ_secret', 'https://shop.example.ma/wp-json/aslan/v1/webhook');
@@ -184,7 +187,7 @@ final class KeyLifecycleServiceTest extends TestCase
         ]);
         $client->method('upsertWebhookConfig')->willReturn($webhookConfig);
 
-        $service = new KeyLifecycleService(httpClientFactory: fn (string $key) => $client);
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key, string $mode) => $client);
 
         $result = $service->register(
             'test',
@@ -221,7 +224,7 @@ final class KeyLifecycleServiceTest extends TestCase
         $client->method('pingApiKeys')->willReturn([$apiKey]);
         $client->method('upsertWebhookConfig')->willReturn($webhookConfig);
 
-        $service = new KeyLifecycleService(httpClientFactory: fn (string $key) => $client);
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key, string $mode) => $client);
         // 3-part shape: sk_<type>_<prefix 8 hex><secret>. Assembled at runtime
         // so the string literal does not trip GitHub's secret-scan heuristics.
         $fakeKey = 'sk_test_' . 'abcd1234' . str_repeat('ZZ', 28);
@@ -233,11 +236,48 @@ final class KeyLifecycleServiceTest extends TestCase
 
     public function test_register_rejects_key_with_too_few_parts(): void
     {
+        // The guard above (register-time local prefix check) rejects "sk_test"
+        // before this reaches findKeyByPrefix. The too-few-parts path is now
+        // exercised by a correctly-prefixed-but-truncated secret where
+        // findKeyByPrefix returns null.
         $client = $this->createMock(AslanHttpClient::class);
         $client->method('pingApiKeys')->willReturn([]);
 
-        $service = new KeyLifecycleService(httpClientFactory: fn (string $key) => $client);
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key, string $mode) => $client);
         $this->expectException(InvalidKeyException::class);
-        $service->register('test', 'sk_test', self::WEBHOOK_URL);
+        $service->register('test', 'sk_test_x', self::WEBHOOK_URL);
+    }
+
+    public function test_register_rejects_sk_test_pasted_in_live_mode(): void
+    {
+        $client = $this->createMock(AslanHttpClient::class);
+        $client->expects(self::never())->method('pingApiKeys');
+
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key, string $mode) => $client);
+        $this->expectException(WrongModeException::class);
+        $this->expectExceptionMessage('Key is test but you are setting it as live.');
+        $service->register('live', 'sk_test_abcd1234_secret', self::WEBHOOK_URL);
+    }
+
+    public function test_register_rejects_sk_live_pasted_in_test_mode(): void
+    {
+        $client = $this->createMock(AslanHttpClient::class);
+        $client->expects(self::never())->method('pingApiKeys');
+
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key, string $mode) => $client);
+        $this->expectException(WrongModeException::class);
+        $this->expectExceptionMessage('Key is live but you are setting it as test.');
+        $service->register('test', 'sk_live_abcd1234_secret', self::WEBHOOK_URL);
+    }
+
+    public function test_register_rejects_unknown_prefix_before_api_call(): void
+    {
+        $client = $this->createMock(AslanHttpClient::class);
+        $client->expects(self::never())->method('pingApiKeys');
+
+        $service = new KeyLifecycleService(httpClientFactory: fn (string $key, string $mode) => $client);
+        $this->expectException(WrongModeException::class);
+        $this->expectExceptionMessage('Key is unknown but you are setting it as test.');
+        $service->register('test', 'pk_test_abcd1234_secret', self::WEBHOOK_URL);
     }
 }
