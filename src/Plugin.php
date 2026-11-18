@@ -36,12 +36,14 @@ final class Plugin
     private function register(): void
     {
         $config          = new Config();
-        $httpClient      = new AslanHttpClient(AslanHttpClient::sdkFactory($config->activeSecretKey()));
+        $httpClient      = new AslanHttpClient(
+            AslanHttpClient::sdkFactory($config->activeSecretKey(), $config->mode())
+        );
         $checkoutService = new CheckoutService($httpClient);
         $refundService   = new Service\RefundService($httpClient);
         $keyLifecycle    = new Service\KeyLifecycleService(
-            static fn (string $secretKey): AslanHttpClient => new AslanHttpClient(
-                AslanHttpClient::sdkFactory($secretKey)
+            static fn (string $secretKey, string $mode): AslanHttpClient => new AslanHttpClient(
+                AslanHttpClient::sdkFactory($secretKey, $mode)
             )
         );
 

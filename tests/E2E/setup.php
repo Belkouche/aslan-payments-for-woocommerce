@@ -38,8 +38,8 @@ update_option('aslan_woo_test_secret_key', $secretKey, false);
 // ASLAN_WOO_API_BASE_URL so AslanHttpClient::sdkFactory points at staging.
 $config       = new Aslan\Woo\Config();
 $keyLifecycle = new Aslan\Woo\Service\KeyLifecycleService(
-    static fn (string $key): Aslan\Woo\Client\AslanHttpClient => new Aslan\Woo\Client\AslanHttpClient(
-        Aslan\Woo\Client\AslanHttpClient::sdkFactory($key)
+    static fn (string $key, string $mode): Aslan\Woo\Client\AslanHttpClient => new Aslan\Woo\Client\AslanHttpClient(
+        Aslan\Woo\Client\AslanHttpClient::sdkFactory($key, $mode)
     )
 );
 

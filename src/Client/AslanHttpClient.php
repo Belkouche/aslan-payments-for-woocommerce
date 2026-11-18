@@ -36,21 +36,48 @@ class AslanHttpClient
      *
      * Use this instead of hand-rolling `new Aslan($key)` in Plugin::register().
      */
-    public static function sdkFactory(string $secretKey, ?HttpClientInterface $httpClient = null): Closure
-    {
-        // Allow deployments to point the SDK at a non-default Aslan environment
-        // (e.g. staging). Defaults to the SDK's own baseUrl when unset or empty.
-        // Prefer the filter for runtime overrides; the constant is for Docker/CI.
-        $baseUrl = '';
+    public const BASE_URL_LIVE = 'https://api.aslanpay.ma/pay';
+    public const BASE_URL_TEST = 'https://staging-api.aslanpay.ma/pay';
+
+    /**
+     * Build an SDK-factory closure pointed at the base URL for the given mode.
+     *
+     * Mapping (hardcoded): mode=live → api.aslanpay.ma, mode=test → staging-api.aslanpay.ma.
+     * A test key hitting prod, or a live key hitting staging, always 401 — that
+     * surprise sank Krustys's first integration, so the mode here is the one
+     * source of truth and the merchant never picks a URL.
+     *
+     * Escape hatches (both still work, filter wins over constant):
+     *   - define('ASLAN_WOO_API_BASE_URL', '…') in wp-config.php
+     *   - add_filter('aslan_woo_api_base_url', fn() => '…') in a mu-plugin
+     * Use them for dev/CI/self-hosted; merchants never need them.
+     */
+    public static function sdkFactory(
+        string $secretKey,
+        string $mode,
+        ?HttpClientInterface $httpClient = null
+    ): Closure {
+        $baseUrl = $mode === 'live' ? self::BASE_URL_LIVE : self::BASE_URL_TEST;
+
         if (defined('ASLAN_WOO_API_BASE_URL') && is_string(ASLAN_WOO_API_BASE_URL)) {
-            $baseUrl = (string) ASLAN_WOO_API_BASE_URL;
+            $override = (string) ASLAN_WOO_API_BASE_URL;
+            if ($override !== '') {
+                $baseUrl = $override;
+            }
         }
         if (function_exists('apply_filters')) {
-            $baseUrl = (string) apply_filters('aslan_woo_api_base_url', $baseUrl);
+            $filtered = (string) apply_filters('aslan_woo_api_base_url', $baseUrl);
+            if ($filtered !== '') {
+                $baseUrl = $filtered;
+            }
         }
-        return static fn (): Aslan => $baseUrl === ''
-            ? new Aslan($secretKey, maxRetries: 0, httpClient: $httpClient)
-            : new Aslan($secretKey, baseUrl: $baseUrl, maxRetries: 0, httpClient: $httpClient);
+
+        return static fn (): Aslan => new Aslan(
+            $secretKey,
+            baseUrl: $baseUrl,
+            maxRetries: 0,
+            httpClient: $httpClient
+        );
     }
 
     /** @var array<int, int> milliseconds to sleep between attempts */
